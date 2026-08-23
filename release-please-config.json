@@ -8,10 +8,6 @@
       "include-component-in-tag": false,
       "changelog-sections": [
         {
-          "type": "milestone",
-          "section": "Milestones"
-        },
-        {
           "type": "feat",
           "section": "Features"
         },

@@ -33,16 +33,20 @@ repos:
     hooks:
       - id: markdownlint
         # .claude/ is vendored skills and plugin docs; CLAUDE.md is a
-        # one-line import directive, not a document.
-        exclude: ^(\.claude/|CLAUDE\.md$)
+        # one-line import directive, not a document. CHANGELOG.md is written
+        # by release-please, whose house style breaks MD004, MD012, and MD013
+        # on every release — a linter cannot win an argument with a generator,
+        # and nobody edits that file by hand anyway.
+        exclude: ^(\.claude/|CLAUDE\.md$|CHANGELOG\.md$)
 
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
-        # Default types plus `milestone`, used when archiving a plan so the
-        # summary lands in CHANGELOG.md alongside the generated entries.
+        # The Conventional Commits defaults. A pull request title is what
+        # actually reaches main under squash merge, and this hook cannot see
+        # it — see the Releases section of AGENTS.md.
         args:
           - build
           - chore
@@ -50,7 +54,6 @@ repos:
           - docs
           - feat
           - fix
-          - milestone
           - perf
           - refactor
           - revert

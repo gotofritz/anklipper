@@ -32,11 +32,18 @@ below:
 * **Prettier, ESLint, and Vitest had to join the pre-commit config in the
   same commit as the toolchain**, because pre-commit refuses to run while its
   own config is unstaged.
-* **Still outstanding: the CI half of test 5, and the first release.** Both
-  need a pull request and a merge to `main`; see *Tests to write first* and
-  *Deliverables* below. The extension was smoke-loaded in headless Chromium
-  with no extension or manifest errors; Firefox was not available in the
-  environment that built this.
+* **Test 5 is complete.** Run 32651929991 turned both CI jobs red on the
+  deliberate assertion — the build job's `pnpm test`, and the lint job's
+  Vitest pre-commit hook — and run 32652022046 was green once corrected.
+* **The first release exposed two further problems**, both fixed after this
+  plan was archived. release-please read a `feat` against a `0.0.0` manifest
+  as 1.0.0, so `initial-version` and `bump-minor-pre-major` now hold the
+  series at 0.x. And the `milestone` commit type this plan relied on could
+  not survive a squash merge; milestones now reach the changelog as their
+  pull request title, with the scope naming the archived plan.
+* **The extension has not been loaded in Firefox.** No Firefox in the
+  environment that built this; the Chrome build was smoke-loaded in headless
+  Chromium with no extension or manifest errors.
 
 ## Goal
 
