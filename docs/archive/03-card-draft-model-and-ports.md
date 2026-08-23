@@ -2,6 +2,59 @@
 
 Index: `00-plan.md`. Depends on: M2. Blocks: M4–M12.
 
+## As built
+
+Archived on completion. Where the milestone landed differently from the plan
+below:
+
+* **The kind is not duplicated onto the draft.** 3.7 asked for
+  `CardDraft.noteTypeKind`; the draft embeds the whole `NoteType`, which
+  already carries `kind`, so the accessor `noteTypeKindOf(draft)` reads it
+  instead. Two copies of one fact can disagree, and the one on the note type
+  is the one the plan says is authoritative.
+* **`kind` is derived from the note type's name, and overridable.**
+  `deriveNoteTypeKind` matches `/cloze/i`; `createNoteType({ kind })` takes
+  precedence. Anki decides cloze-ness from the templates, which this layer
+  cannot see — M4's adapter can, and passes `kind` explicitly rather than
+  relying on the heuristic.
+* **Conversion carries the *primary* field, not literally `Front` into
+  `Text`.** 3.12's rule generalises to "the field the note type leads with",
+  which is `Front` on Basic and `Text` on Cloze, and stays correct for a
+  cloze note type named something else.
+* **The stash is consumed when it is restored**, keyed by note type name, and
+  a restored value never overwrites one that carried over. Clearing a field
+  also clears that name from **every** stash — the risk the plan names.
+  Together those are what keeps it from becoming a junk drawer.
+* **Cloze operations are string transforms only.** `cloze.ts` takes text and
+  returns text; the draft-level entry points are `convertToCloze` and
+  `convertFromCloze`. Marking a range is `addDeletion(field, range)` followed
+  by `setField`, so no offset is ever held across an edit.
+* **Malformed markup suppresses the empty-cloze issue.** How many deletions a
+  field holds is exactly what cannot be known while it does not parse, so
+  validation reports `cloze-markup-malformed` alone rather than adding
+  `cloze-no-deletions` to it.
+* **`{{c0::…}}` is malformed, not ordinal zero.** The parser only matches
+  `c[1-9]\d*`; anything else beginning `{{c` is reported rather than
+  reinterpreted, which is 3.11 applied to the ordinal as well as the span.
+* **Transitions that can fail return `Result<CardDraft, DraftIssue>`** —
+  `setField`, `addTag`, both conversions — reusing the issue type validation
+  returns (3.4) rather than inventing a second error vocabulary.
+* **Tags may not contain whitespace**, since Anki separates them with spaces.
+  `::` stays legal: it is Anki's hierarchy separator.
+* **The three ports share one file**, `src/core/ports/types.ts`, with the
+  fakes in `src/core/ports/fakes/`. They are interfaces and one default
+  constant, with no implementation to separate. `AnkiError`'s taxonomy is
+  declared here as the shape M4 reports in; M4 owns detecting each cause.
+* **`generateBasicCard` takes a fourth argument**, `{ now }`, so a draft's
+  timestamp is testable without touching the clock globally.
+* **The boundary lint rule needed no widening.** M1 wrote it against
+  `src/core/**/*.ts`, which the card model landed inside, so the "done when"
+  criterion was already enforced.
+
+Not built, deliberately: no draft-level wrapper around `addDeletion`. The
+controls that drive cloze marking are M6, and the wrapper's shape follows from
+what the editor needs rather than from a guess made here.
+
 ## Goal
 
 The contract every other layer speaks: a `CardDraft`, its validation, the

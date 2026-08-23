@@ -8,11 +8,16 @@ For what the extension does and how to use it, see the
 
 ## Where things stand
 
-M2 has landed. The toolchain and CI are green (M1), and the extension now has
-its skeleton: the three contexts start and talk to each other over a typed
-message channel, every `browser.*` call sits behind a port in
-`src/platform/`, and the manifest holds the MVP permission set and the pinned
-extension identity. Nothing user-facing works yet — the card model is M3.
+M3 has landed. The toolchain and CI are green (M1), the extension has its
+skeleton (M2) — three contexts talking over a typed message channel, every
+`browser.*` call behind a port in `src/platform/`, the MVP permission set and
+the pinned extension identity in the manifest — and `src/core/` now holds the
+card model: `CardDraft` and its transitions, cloze markup, validation,
+deterministic generation, and the three ports with their in-memory fakes.
+
+Nothing user-facing works yet. The card model has no adapter to talk to and no
+editor to render it: AnkiConnect is M4, extraction is M5, the sidebar editor
+is M6, and M7 is what joins them up.
 
 `docs/initial-context.md` is the authoritative description of that
 architecture. Read it before changing a layer boundary, a message shape, or a
@@ -60,9 +65,9 @@ UI depend on interfaces — `AnkiClient`, `DraftStore`, `SettingsStore` — neve
 on concrete AnkiConnect calls or `browser.*`. Every port ships an in-memory
 fake, and that is what tests run against.
 
-- **Card model** — `CardDraft` and its transitions. Pure TypeScript, no
-  browser, no network. Cloze markup lives here too: deletions are
-  `{{c1::…}}` text, so producing and parsing them is string work, not UI
+- **Card model** — `CardDraft` and its transitions, in `src/core/`. Pure
+  TypeScript, no browser, no network. Cloze markup lives here too: deletions
+  are `{{c1::…}}` text, so producing and parsing them is string work, not UI
   work.
 - **Card generation** — selected text plus page context to a `CardDraft`.
 - **Content/page layer** — selection and page-context extraction.
@@ -84,8 +89,12 @@ On disk:
   registry. Depends on ports, never on the browser.
 - `src/background/`, `src/content/`, `src/sidebar/` — what each context does,
   outside the entrypoint that starts it.
-- `src/core/` — framework-independent domain code. The `Result` type today;
-  the card model from M3.
+- `src/core/` — framework-independent domain code: the `Result` type, and the
+  card model — `note-type.ts`, `draft.ts`, `cloze.ts`, `validate.ts`,
+  `generate.ts`. `src/core/ports/` declares the `AnkiClient`, `DraftStore`,
+  and `SettingsStore` interfaces, with an in-memory fake for each under
+  `ports/fakes/`. The fakes can be told to fail, so a consumer can test its
+  error path as well as its happy one.
 - `src/manifest/` — the permission ceiling and the pinned extension identity,
   imported by `wxt.config.ts` and pinned by a test.
 - `src/` is the alias root. `@/…` resolves to it identically in the build, in

@@ -9,8 +9,9 @@ For what the extension does, see the [README](../README.md). For how to build
 and test it, see the [developer guide](developer-guide.md). For what is being
 built next, see [the plan index](plans/00-plan.md).
 
-Written at M2, which is the milestone that created the extension skeleton.
-Where a layer named below does not exist yet, this file says so.
+Written at M2, which created the extension skeleton, and extended at M3 with
+the card model and the ports. Where a layer named below does not exist yet,
+this file says so.
 
 ## What the extension is
 
@@ -29,6 +30,7 @@ implementation and an in-memory fake, and tests run against the fake.
 |-------|-----------|------------|--------|
 | Result type | `src/core/` | nothing | M2 |
 | Card model, card generation | `src/core/` | nothing | M3 |
+| Ports and their fakes | `src/core/ports/` | the card model | M3 |
 | Typed messaging | `src/messaging/` | ports | M2 |
 | Platform wrappers (ports + adapters) | `src/platform/` | `browser.*` | M2 |
 | Manifest constants | `src/manifest/` | nothing | M2 |
@@ -135,16 +137,90 @@ this later means rewriting the draft flow.
 
 ## Card model
 
-Not built yet; M3 owns it. `CardDraft` is the only contract between
-generation, the editor, and AnkiConnect (P4), and it stays independent of
-Svelte and of AnkiConnect. Cloze is a note-type flavour rather than a
-separate model (P7): deletions are `{{cN::…}}` markup inside a field, so
-producing and parsing them is string work belonging to the card model.
+`CardDraft` is the only contract between generation, the editor, and
+AnkiConnect (P4). It is a plain immutable value (3.3) in `src/core/`, with no
+dependency on Svelte, on AnkiConnect, or on `browser.*` — every transition is
+a pure function returning a new draft.
+
+| Module | Holds |
+|--------|-------|
+| `note-type.ts` | `NoteType`: name, field names in Anki's order, `kind`, required fields |
+| `draft.ts` | `CardDraft`, `DraftIssue`, and every transition |
+| `cloze.ts` | The `{{cN::…}}` parser and the string transforms over it |
+| `validate.ts` | `validateDraft` — the issue list |
+| `generate.ts` | `generateBasicCard` — selection plus page context to a draft |
+| `ports/` | `AnkiClient`, `DraftStore`, `SettingsStore`, and their fakes |
+
+**Fields are keyed by the note type's real field names** (3.1). A positional
+array breaks the moment a note type is edited in Anki.
+
+**Changing note type remaps by name; unmatched content is stashed, never
+dropped** (3.2). Fields whose names exist in both carry over. The rest move to
+`draft.stash`, keyed by the note type they came from, and are restored — into
+blank fields only — if the user switches back. The stash is bounded two ways:
+restoring consumes it, and clearing a field clears that name out of every
+stash, because content the user deliberately emptied must not reappear.
+
+**Validation returns a list of typed issues, not a boolean** (3.4), so the
+editor can name the field and say why. It reports every issue rather than
+stopping at the first.
+
+**Provenance is kept verbatim and separately** (3.6). `draft.source` holds the
+selection exactly as captured, plus the surrounding context, URL, and title,
+while the fields are edited freely. `draft.generation` names the generator and
+its version, so a later AI generator is distinguishable from this one.
+
+### Cloze
+
+Cloze is a note-type flavour rather than a separate model (P7, 3.7):
+`NoteType.kind` is `"standard"` or `"cloze"`, read off the note type rather
+than chosen by the user, and `noteTypeKindOf(draft)` is how the rest of the
+code asks.
+
+Deletions live as `{{cN::answer::hint}}` markup **inside the field text**
+(3.8) — Anki's own representation is the single source of truth, so there is
+no parallel list of ranges to drift out of sync. `cloze.ts` parses on demand.
+
+- A new deletion takes `max(ordinal) + 1`; passing an ordinal explicitly
+  reuses it, which is how several spans are grouped under one `cN` (3.9).
+- Overlapping deletions are rejected. Ordinal **gaps are left alone** —
+  renumbering happens only when asked for (3.10).
+- Markup is round-trip validated rather than escaped (3.11): captured web text
+  may contain braces, so `addDeletion` re-parses what it produced and refuses
+  when the result would not mean what was intended. Anything beginning `{{c`
+  that the parser cannot account for becomes a typed issue, never a silent
+  reinterpretation.
+- Basic ↔ Cloze share no field name, so switching stashes everything per 3.2.
+  `convertToCloze` / `convertFromCloze` additionally carry the primary field
+  across — `Front` into `Text` and back, stripped of markup — and are an
+  explicit user action, never automatic (3.12).
+
+Character ranges are read against the text as given and used immediately: a
+transition takes text plus a range and returns new text, and never holds an
+offset across an edit.
+
+## Ports
+
+The domain layer talks to interfaces, never to AnkiConnect or `browser.*`
+(P3). `src/core/ports/types.ts` declares three; the adapters that implement
+them arrive later, and each ships an in-memory fake in
+`src/core/ports/fakes/` that tests run against.
+
+| Port | Answers with | Real implementation |
+|------|--------------|---------------------|
+| `AnkiClient` | `Result<…, AnkiError>` | `src/anki/`, M4 |
+| `DraftStore` | `Result<…, DraftStoreError>` | over `StoragePort`, M7 |
+| `SettingsStore` | `Result<…, SettingsStoreError>` | over `StoragePort`, M8 |
+
+Every fake can be driven into failure with `failWith(error)`, because each
+consumer has to be able to test its own error path. A fake that only ever
+succeeds would hide exactly the cases the error taxonomy exists for.
 
 ## AnkiConnect
 
-Not built yet; M4 owns the client and its error taxonomy, M9 the user-facing
-onboarding. Two constraints already shape the skeleton:
+The `AnkiClient` port and its `AnkiError` kinds exist (M3); the client behind
+them does not. M4 owns it and the detection of each error cause, M9 the
+user-facing onboarding. Two constraints already shape the skeleton:
 
 **The extension's origin is read at runtime, never hardcoded** (P8, 2.6).
 AnkiConnect rejects any request whose `Origin` is absent from its
