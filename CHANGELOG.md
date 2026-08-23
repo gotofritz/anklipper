@@ -9,6 +9,13 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [0.2.0](https://github.com/gotofritz/anklipper/compare/v0.1.1...v0.2.0) (2026-08-23)
+
+
+### Features
+
+* **m2:** extension skeleton, typed messaging, and platform portsFeat/02 extension skeleton ([#9](https://github.com/gotofritz/anklipper/issues/9)) ([b9840b2](https://github.com/gotofritz/anklipper/commit/b9840b2dc10dea300efd9ff988ebef965bbb0032))
+
 ## [0.1.1](https://github.com/gotofritz/anklipper/compare/v0.1.0...v0.1.1) (2026-08-23)
 
 
