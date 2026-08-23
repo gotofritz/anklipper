@@ -9,6 +9,13 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [0.1.1](https://github.com/gotofritz/anklipper/compare/v0.1.0...v0.1.1) (2026-08-23)
+
+
+### Bug fixes
+
+* **release:** link plans from the changelog by derivable path ([#7](https://github.com/gotofritz/anklipper/issues/7)) ([a3e2cb2](https://github.com/gotofritz/anklipper/commit/a3e2cb2999a06bbcf3ae92c2b7e64a07addb27ea))
+
 ## 0.1.0 (2026-08-23)
 
 
