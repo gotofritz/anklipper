@@ -2,6 +2,98 @@
 
 Index: `00-plan.md`. Depends on: M3. Blocks: M6–M9.
 
+## As built
+
+Archived on completion. Where the milestone landed differently from the plan
+below:
+
+* **The port grew the probe and the handshake.** `AnkiClient` now declares
+  `probe()` and `requestPermission()` alongside the four data operations, so
+  M9's onboarding talks to the same interface everything else does rather than
+  reaching past it into the adapter. `AnkiErrorKind` gained the five causes the
+  taxonomy names — `permission-missing`, `permission-denied`,
+  `api-key-required`, `empty-cloze`, `timeout` — and `AnkiError` gained two
+  optional fields: `origin`, which `origin-rejected` carries so M9 can show the
+  user their own value, and `needsManualFix`, which marks a cause no retry can
+  clear.
+* **The handshake has four outcomes, not three.** `granted`, `denied`, and
+  `asked` are 4.7's; `blocked` was added for "could not even ask", which is
+  what a missing host permission means. Folding it into `denied` would have
+  told the user Anki refused them when Anki was never contacted.
+* **Confidence lives on the probe's result, not on the error.** `AnkiConnection`
+  carries `confident` and `alternatives`; the transport passes them up
+  internally on an adapter-local `AnkiFailure`, and every other operation
+  narrows them away. Only the probe has anything to say about them.
+* **`allowDuplicate` is `true`, and M3's fake was corrected to match.** 4.4
+  makes a duplicate a warning rather than a block, and `AnkiClient.addNote`
+  takes no override — so a request that refused duplicates would turn the
+  warning into a block with no way past it. `canAddNote` is what reports the
+  duplicate; the add that follows the user's decision goes through.
+  `createFakeAnkiClient` refused duplicates from `addNote`, which would have
+  had M6 build a block against the fake and then find the real adapter
+  disagreed; it now records the note and leaves `failWith` as the way to drive
+  the refusing path.
+* **The adapter injects nothing into the fields** (the source field policy).
+  It sends the note type's own fields verbatim and nothing else. The source URL
+  and title are provenance the model keeps alongside the fields (3.6); writing
+  them into a field the user did not fill is the editor's decision, not this
+  layer's. Cloze braces are passed through untouched.
+* **No request headers at all.** A `Content-Type: application/json` would make
+  every call a preflighted one and add the add-on's OPTIONS handling to the
+  list of things that can go wrong. Without headers the call is a CORS-simple
+  request, and AnkiConnect parses the body as JSON regardless of what the
+  browser labels it.
+* **The envelope's version is pinned at `6`; the *reported* version is read.**
+  4.9's rule is honoured where it can be: the add-on rejects an envelope naming
+  a version it does not know, so the request has to name one, and `version` and
+  the handshake reply are what supply the number the adapter reports.
+* **`modelTemplates` is the action behind 4.6**, with M3's name heuristic as
+  the fallback when it cannot be read — an unreadable template list costs the
+  flavour of one note type rather than the whole list. `noteTypes()` therefore
+  makes `1 + 2N` requests. On loopback that is cheap, and it is the price of
+  not guessing.
+* **The two things the adapter needs from the browser are injected as plain
+  values**: `origin` as a string from `OriginPort.extensionOrigin()`, and
+  `hasHostPermission` as a function over `PermissionsPort`. No `browser.*` or
+  Svelte import appears anywhere in `src/anki/`, and ESLint now enforces that
+  for the directory.
+* **`empty-cloze` is settled from the draft, not only from the message.** Anki
+  refuses a cloze note with no deletions using the same "it is empty" it uses
+  for a blank first field. `classifyAddNoteError` takes the draft, so when the
+  note type is cloze-flavoured and its primary field parses to zero deletions,
+  the cause is `empty-cloze` — which is the case 4.3 exists for, since the two
+  need different fixes.
+
+### Not done, and why
+
+The manual passes under *Done when* need a running Anki and a real Firefox
+profile, and neither exists in the environment this was built in. Every one of
+them is still outstanding, and each is a case where the code encodes a
+reasonable reading of the add-on's behaviour that has not been confirmed
+against the installed version:
+
+* the happy path and the `origin-rejected` path against a real Anki;
+* that the origin the adapter reports is the one AnkiConnect accepts when
+  pasted into `webCorsOriginList`;
+* that the `no-cors` request really does resolve opaque when something is
+  listening and reject when nothing is — the technique the plan flags for
+  verification, and the whole basis for telling `anki-not-running` from
+  `origin-rejected`. Both causes are reported with `confident: false` and the
+  other as an alternative, so a wrong guess degrades to two suggested fixes
+  rather than one wrong one;
+* the handshake end to end from a clean `webCorsOriginList`;
+* cloze detection against a custom cloze-flavoured note type;
+* the exact wording Anki uses to refuse an empty cloze note, which
+  `classifyAddNoteError` matches by pattern and by inspecting the draft.
+
+### Decisions pinned beyond the table below
+
+| # | Decision | Note |
+|---|----------|------|
+| 4.10 | The adapter sends the note type's own fields and injects nothing | Source stays provenance on the draft; a note type with a `Source` field is filled by the editor, not here. |
+| 4.11 | Requests carry no headers, keeping every call a CORS-simple request | No preflight, so the add-on's OPTIONS handling is never in the path. |
+| 4.12 | `addNote` sends `allowDuplicate: true` | The only way 4.4's warning stays a warning, given `addNote(draft)` takes no override. |
+
 ## Goal
 
 The only module in the codebase that knows AnkiConnect's wire format. It

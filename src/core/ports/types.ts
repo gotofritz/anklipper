@@ -25,6 +25,16 @@ export type AnkiErrorKind =
   | "addon-missing"
   /** The extension's origin is absent from `webCorsOriginList`. */
   | "origin-rejected"
+  /** The loopback host permission has not been granted (2.7, Firefox MV3). */
+  | "permission-missing"
+  /**
+   * The handshake ran and the answer was no — the user declined, or the origin
+   * sits in `ignoreOriginList` and no dialog will ever appear again. A dead end
+   * a retry cannot clear, which is what `needsManualFix` says.
+   */
+  | "permission-denied"
+  /** The add-on has an `apiKey` set and the request carried none, or a wrong one. */
+  | "api-key-required"
   /** A reply that was not the shape AnkiConnect promises. */
   | "malformed-response"
   /** Anki already holds a note with this first field. */
@@ -32,17 +42,72 @@ export type AnkiErrorKind =
   | "unknown-deck"
   | "unknown-note-type"
   | "unknown-field"
+  /** A cloze note reached Anki with no deletions — M3's validation disagrees. */
+  | "empty-cloze"
+  /** Anki accepted the connection and never answered. */
+  | "timeout"
   /** An API-level error with no more specific kind. */
   | "api-error";
 
 export interface AnkiError {
   readonly kind: AnkiErrorKind;
   readonly message: string;
+  /**
+   * On `origin-rejected`, the origin the request carried, read at runtime
+   * (P8) — so M9 can show the user the value they have to paste into
+   * `webCorsOriginList` rather than a guess at it.
+   */
+  readonly origin?: string;
+  /**
+   * True when only the user changing something in Anki clears this. A caller
+   * that retries such a cause loops forever.
+   */
+  readonly needsManualFix?: boolean;
 }
+
+/**
+ * What the probe answers with (4.3): a cause, never a boolean. "Not available"
+ * is several different problems with several different fixes, and the browser
+ * cannot always tell them apart — a rejected origin and a dead port both
+ * surface as a failed `fetch` — so the probe reports its best guess and says
+ * how sure it is, leaving M9 free to offer two fixes instead of one confident
+ * wrong one.
+ */
+export type AnkiConnection =
+  | { readonly kind: "connected"; readonly apiVersion: number }
+  | {
+      readonly kind: "unavailable";
+      readonly cause: AnkiError;
+      /** False when the evidence fits `alternatives` just as well. */
+      readonly confident: boolean;
+      /** The other causes the same evidence allows, likeliest first. */
+      readonly alternatives: readonly AnkiErrorKind[];
+    };
+
+/**
+ * The result of the `requestPermission` handshake (4.7, P9).
+ *
+ * Fire-and-then-re-probe: from a rejected origin the add-on's reply is
+ * unreadable, so the honest answer is `asked` — the dialog is up, and only a
+ * following probe establishes what the user did with it.
+ */
+export type AnkiHandshake =
+  /** The reply was readable and said yes; the add-on reported this version. */
+  | { readonly kind: "granted"; readonly apiVersion: number }
+  /** The reply was readable and said no. `cause.needsManualFix` is set. */
+  | { readonly kind: "denied"; readonly cause: AnkiError }
+  /** Sent, answer unreadable. Probe again to find out. */
+  | { readonly kind: "asked" }
+  /** The handshake could not even be sent — the host permission is missing. */
+  | { readonly kind: "blocked"; readonly cause: AnkiError };
 
 export type NoteId = number;
 
 export interface AnkiClient {
+  /** Why AnkiConnect is or is not usable (4.3). Never throws. */
+  probe(): Promise<AnkiConnection>;
+  /** Ask the add-on to allowlist this extension's origin (4.7, P9). */
+  requestPermission(): Promise<AnkiHandshake>;
   deckNames(): Promise<Result<readonly string[], AnkiError>>;
   noteTypes(): Promise<Result<readonly NoteType[], AnkiError>>;
   /** Whether the note could be added — duplicate detection, non-blocking (4.4). */

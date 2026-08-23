@@ -9,9 +9,10 @@ For what the extension does, see the [README](../README.md). For how to build
 and test it, see the [developer guide](developer-guide.md). For what is being
 built next, see [the plan index](plans/00-plan.md).
 
-Written at M2, which created the extension skeleton, and extended at M3 with
-the card model and the ports. Where a layer named below does not exist yet,
-this file says so.
+Written at M2, which created the extension skeleton, extended at M3 with the
+card model and the ports, and at M4 with the AnkiConnect adapter behind the
+first of them. Where a layer named below does not exist yet, this file says
+so.
 
 ## What the extension is
 
@@ -37,7 +38,7 @@ implementation and an in-memory fake, and tests run against the fake.
 | Background context | `src/background/` | ports, messaging | M2 |
 | Page context | `src/content/` | ports, messaging | M2 |
 | Sidebar UI | `src/sidebar/` | ports, messaging | M2 |
-| AnkiConnect adapter | `src/anki/` | `fetch` | M4 |
+| AnkiConnect adapter | `src/anki/` | the card model, `fetch` | M4 |
 | Entrypoints | `src/entrypoints/` | everything | M1 |
 
 The dependency rule is one-directional: `platform` knows about the browser,
@@ -208,7 +209,7 @@ them arrive later, and each ships an in-memory fake in
 
 | Port | Answers with | Real implementation |
 |------|--------------|---------------------|
-| `AnkiClient` | `Result<…, AnkiError>` | `src/anki/`, M4 |
+| `AnkiClient` | `Result<…, AnkiError>`, `AnkiConnection`, `AnkiHandshake` | `src/anki/`, M4 |
 | `DraftStore` | `Result<…, DraftStoreError>` | over `StoragePort`, M7 |
 | `SettingsStore` | `Result<…, SettingsStoreError>` | over `StoragePort`, M8 |
 
@@ -218,17 +219,83 @@ succeeds would hide exactly the cases the error taxonomy exists for.
 
 ## AnkiConnect
 
-The `AnkiClient` port and its `AnkiError` kinds exist (M3); the client behind
-them does not. M4 owns it and the detection of each error cause, M9 the
-user-facing onboarding. Two constraints already shape the skeleton:
+`src/anki/` is the only place in the codebase that knows AnkiConnect's wire
+format (M4). Everything above it depends on the `AnkiClient` port and takes
+this as one implementation of it; M9 owns the user-facing onboarding built on
+the causes it reports.
+
+| Module | Holds |
+|--------|-------|
+| `protocol.ts` | The request envelope, and one validator per reply shape. |
+| `transport.ts` | `fetch`, the timeout, and the classification of everything that fails before a reply is parsed. |
+| `errors.ts` | AnkiConnect's error strings, turned into typed causes. |
+| `mapping.ts` | `CardDraft` → note params, and note-type descriptors. |
+| `client.ts` | The port implementation, the probe, and the handshake. |
+
+**Nothing here imports `browser.*` or Svelte,** and ESLint enforces it for the
+directory. The two things the adapter needs from the browser are injected as
+plain values: the extension's own origin as a string, and whether the loopback
+host permission has been granted as a function. So the whole layer is testable
+against a stubbed `fetch`, and no test needs a running Anki.
+
+### "Unavailable" is not one thing
+
+The probe answers with a **cause**, never a boolean (4.3), because each has a
+different fix: Anki not running, the add-on not installed, the origin rejected,
+the host permission not granted, an API key required, the handshake declined, a
+timeout, a malformed reply, or an API-level error. `AnkiError` carries the
+add-on's own words, plus `origin` on `origin-rejected` — so M9 can show the
+user the value to paste — and `needsManualFix` on a cause no retry will clear.
+
+A rejected origin and a dead port are indistinguishable from the browser's
+side: the add-on answers a non-allowlisted origin with
+`Access-Control-Allow-Origin: http://localhost`, so the extension cannot read
+even the 403 it sends, and both surface as a failed `fetch`. The transport
+separates them with a `no-cors` request, which resolves opaque when something
+is listening and rejects when nothing is — evidence, not proof, so the probe
+reports `confident: false` and names the alternatives it could not rule out.
+**This technique has not yet been confirmed on a real Firefox profile.**
+
+### Onboarding is a handshake, not a config edit
+
+The add-on's `requestPermission` action reaches it even from a non-allowlisted
+origin and prompts inside Anki; on approval it appends the origin and saves the
+config (P9). Its reply is unreadable from a rejected origin, so the adapter
+treats it as fire-and-then-re-probe: `asked` means the dialog is up and only a
+following probe establishes what the user did. A readable refusal is
+`permission-denied` with `needsManualFix`, because an origin in the add-on's
+`ignoreOriginList` never sees the dialog again and only a config edit clears
+it. Hand-editing `config.json` stays the documented fallback. `"*"` in
+`webCorsOriginList` is never suggested: it is honoured, and would let any site
+the user visits drive their collection.
+
+### What the adapter does and does not decide
+
+* **Duplicates are a warning, not a block** (4.4). `canAddNote` reports one
+  through `canAddNotes`; `addNote` sends `allowDuplicate: true`, so a user who
+  is told and goes ahead anyway is not stopped.
+* **The fields go out verbatim, and nothing is injected.** Source URL and title
+  are provenance on the draft (3.6); a note type with a field for them is
+  filled by the editor. Cloze braces are passed through untouched — parsing
+  them belongs to the card model.
+* **Cloze flavour is read from the note type's templates**, via
+  `modelTemplates`, and falls back to M3's name heuristic only when the
+  templates cannot be read (4.6). The descriptor carries it, so no layer above
+  re-derives it.
+* **Every reply is validated, never cast** (4.5), and a reply that does not
+  validate is `malformed-response` rather than a crash three layers away.
+* **Every call has a timeout**, because Anki can accept a connection and never
+  answer.
+* Requests carry **no headers**, which keeps every call a CORS-simple request
+  and takes the add-on's preflight handling out of the path.
 
 **The extension's origin is read at runtime, never hardcoded** (P8, 2.6).
 AnkiConnect rejects any request whose `Origin` is absent from its
-`webCorsOriginList`, and the extension's origin is not allowlisted by
-default. Firefox mints a fresh `moz-extension://<uuid>` per installation, so
-no constant is correct for two users. `OriginPort.extensionOrigin()` reads it
-from `runtime.getURL("")` and strips the trailing slash an `Origin` header
-never carries.
+`webCorsOriginList`, and the extension's origin is not allowlisted by default.
+Firefox mints a fresh `moz-extension://<uuid>` per installation, so no constant
+is correct for two users. `OriginPort.extensionOrigin()` reads it from
+`runtime.getURL("")` and strips the trailing slash an `Origin` header never
+carries.
 
 **The extension's identity is pinned** (2.4), so that origin survives a
 reload — otherwise the user's own allowlist entry would break every time.
@@ -271,5 +338,7 @@ there — which is the point: one code path, correct on both.
 
 Selected page text and page context are potentially sensitive. Through M11
 they travel only to loopback. Nothing that carries page content is logged in
-production builds. AnkiConnect's optional `apiKey`, once M4 supports it,
-never appears in a log or in diagnostics.
+production builds. AnkiConnect's optional `apiKey` is carried on every action
+except the handshake and appears in no log and no diagnostic: the adapter's
+`describeAnkiConnection()` reports whether one is configured, never its
+value.

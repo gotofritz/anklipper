@@ -43,7 +43,13 @@ export default ts.config(
     // the browser or to a UI framework. `src/platform/` is the exception by
     // definition — it is the adapter layer, and the only place `browser.*` is
     // reached (2.3). M3 widens this list again with the card model.
+    //
+    // `src/anki/` is here too, from M4: it is an adapter, but its outside edge
+    // is `fetch` rather than `browser.*`. The two things it needs from the
+    // browser — the extension's own origin and whether the host permission was
+    // granted — are injected, so the whole layer is testable without one.
     files: [
+      "src/anki/**/*.ts",
       "src/core/**/*.ts",
       "src/lib/**/*.ts",
       "src/manifest/**/*.ts",
