@@ -1,180 +1,97 @@
-# Browser Extension → Anki: Top-Level Plan
+# Anklipper — Top-Level Plan
 
-## 1. Extension Architecture
+Turn text selected on a web page into an Anki card, via AnkiConnect.
 
-Define the overall extension structure and responsibilities.
+**Target flow:** select text → *Create Anki Card* → preview → edit → add →
+confirmation.
 
-* Browser extension using **TypeScript + Svelte**
-* Manifest V3
-* Separate concerns between:
+This file is the **index**: what the milestones are, what order they go in,
+and which decisions are settled. Detail lives in the subplans — read the one
+you are about to start, not all of them.
 
-  * page/selection handling
-  * Svelte UI
-  * card generation
-  * AnkiConnect communication
-  * extension settings/state
-* Establish communication between content scripts, extension UI, and background/service worker.
+## Pinned decisions
 
-## 2. Text Selection & Page Context
+Settled; each names where it is worked out. Re-opening one means editing that
+subplan and saying so here, per `AGENTS.md`.
 
-Build the mechanism for capturing what the user wants to turn into a card.
+| # | Decision | Detail | Reversal cost |
+|---|----------|--------|---------------|
+| P1 | **WXT** as extension toolchain (Vite + Svelte + TS) | M1 | High — rewires build, manifest, tests |
+| P2 | **Sidebar** as the UI surface — `sidebarAction` on Firefox, `sidePanel` on Chrome; survives focus loss, so a draft is not lost to a stray click | M2 | Medium — sits behind an adapter |
+| P3 | **Ports-and-adapters**: UI and generation depend on interfaces, never on AnkiConnect or `browser.*` | M3 | Low if honoured from M3; high if retrofitted |
+| P4 | **`CardDraft` is the only contract** between generation, editor, and AnkiConnect | M3 | High — touches every layer |
+| P5 | **Firefox first, Chrome structurally allowed.** Firefox is the stricter target, so Chrome stays additive | M1, M9 | Low, given P1 and P3 |
+| P6 | **Deterministic generation only** through M11; no AI, no egress beyond loopback | M12 | Low — additive |
+| P7 | **Cloze is in the MVP**, as a note-type flavour. The markup is pure string work; only *choosing* what to hide needs AI | M3 | Low — but the model must know from M3 |
+| P8 | **The extension's own origin is read at runtime, never hardcoded.** Firefox's `moz-extension://<uuid>` is per installation | M2, M9 | Low, but no constant is correct for two users |
+| P9 | **Onboarding uses AnkiConnect's `requestPermission` handshake**; hand-editing `config.json` is the fallback | M4, M9 | Low — the fallback is written anyway |
+| P10 | **Rich text editing arrives in M10**, superseding M6's plain textarea. Capture stays plain text | M10 | Medium — changes the input element under M6's tests |
 
-* Detect selected text on the current page.
-* Add a context-menu action such as **Create Anki Card**.
-* Support an optional keyboard shortcut.
-* Capture useful context:
+## Constraints
 
-  * selected text
-  * surrounding text
-  * page title
-  * URL
-  * relevant heading/section
-* Define how much page context should be retained.
+**Permissions ceiling.** `contextMenus`, `storage`, `activeTab`, `scripting`,
+the target browser's sidebar permission, and the host permission
+`http://127.0.0.1:8765/*`. Never `<all_urls>` — `activeTab` + `scripting` on a
+user gesture covers extraction. Anything beyond this list needs a justification
+in the subplan that adds it. On Firefox MV3 a declared host permission is not
+granted at install; check and request it at runtime (M2).
 
-## 3. Card Draft Model
+**AnkiConnect.** Its default config allowlists no extension origin, so the
+first-run state is always rejected. The add-on's `requestPermission` handshake
+is the way out (P9). Reachability, the error taxonomy, and the config details
+are worked out in M4; the user-facing flow in M9.
 
-Define an internal representation of an Anki card independent of AnkiConnect.
+**Privacy.** Selected page text and captured screenshots are potentially
+sensitive. Through M11 they go only to loopback. Nothing is logged in
+production builds. A screenshot catches whatever else was on screen, so the
+user sees it before it is attached (11.5).
 
-For example:
+**Not in the MVP.** AI generation, media, batch creation, sync/history. Cloze
+*is* in (P7); Anki-editor fidelity is M10 and media is M11, both after the
+MVP ships.
 
-* Deck
-* Note type
-* Fields
-* Tags
-* Source URL
-* Source title
-* Original selected text
+**Never in this project.** LaTeX and MathJax. Not deferred — not planned. No
+buttons, no parsing, no rendering.
 
-This becomes the contract between card generation, the editor, and AnkiConnect.
+## Milestones
 
-## 4. Card Generation
+Ordering rule: **the contract precedes its consumers**, and anything that
+cannot be tested cannot be built — so the harness comes first, and the
+AnkiConnect interface precedes the editor that renders its data.
 
-Define how raw selected text becomes a useful card.
+| # | Milestone | Depends on | Subplan |
+|---|-----------|------------|---------|
+| M1 | Toolchain, test harness, CI — green before any feature work | — | `01-toolchain-and-test-harness.md` |
+| M2 | Extension skeleton: manifest, permissions, typed messaging, platform wrappers | M1 | `02-extension-skeleton.md` |
+| M3 | `CardDraft`, validation, cloze markup, deterministic generation, port interfaces and fakes | M2 | `03-card-draft-model-and-ports.md` |
+| M4 | AnkiConnect adapter and its error taxonomy, against mocked HTTP | M3 | `04-ankiconnect-adapter.md` |
+| M5 | Selection and page-context extraction; context menu and shortcut | M2, M3 | `05-selection-and-page-context.md` |
+| M6 | Sidebar editor, built against the fake adapter | M3, M4 | `06-svelte-editor.md` |
+| M7 | End-to-end MVP, with the draft persisted from the moment it exists | M4, M5, M6 | `07-end-to-end-mvp.md` |
+| M8 | Settings, storage, and schema migration | M7 | `08-settings-and-persistence.md` |
+| M9 | Onboarding, connection diagnostics, repeat-capture polish | M8 | `09-onboarding-and-diagnostics.md` |
+| M10 | Card editor parity: every note type, its own fields in order, formatting, sticky fields, tags | M9 | `10-card-editor-parity.md` |
+| M11 | Media: region screenshots, page images, paste and drop | M10 | `11-media-and-screenshots.md` |
+| M12 | AI-assisted generation — **blocked** on its own design doc | M11 | `12-ai-generation.md` |
 
-### Initial MVP
+## Resolved questions
 
-Use deterministic generation:
+Each settled in the subplan named; reversing one means editing that subplan.
 
-* Selected text → basic Front/Back card
-* Preserve selected text as source material.
-* Allow the user to edit everything before submission.
+| Question | Resolution | Where |
+|----------|------------|-------|
+| Note-type switch: drop, remap, or positional? | Remap by field name; unmatched content stashed and restorable | M3, 3.2 |
+| Duplicate detection in the MVP? | Yes, via `canAddNotes`, non-blocking | M4, 4.4 |
+| How much surrounding context? | Nearest block ancestor, capped at 1 000 chars; selection capped at 10 000 | M5, 5.3 |
+| Rich text or plain? | Plain on capture; rich in the editor from M10 | M5 5.2, M10 10.3 |
+| Which browser first? | Firefox; Chrome after the first release | P5, M9 9.5 |
 
-### Later
+## Deferred
 
-Add optional AI-assisted generation:
+Full-page and scroll-and-stitch capture, audio and video, image occlusion,
+highlighted source excerpts, automatic tagging, batch creation, several cards
+from one selection, card templates, history of recent cards, offline queue of
+failed adds, Chrome and other browsers.
 
-* Generate question/answer cards.
-* Generate definitions.
-* Generate cloze cards.
-* Use surrounding page context.
-* Allow different generation styles.
-
-## 5. Svelte Card Preview & Editor
-
-Build the main user-facing interface in **Svelte**.
-
-* Side panel or popup UI.
-* Display generated card.
-* Editable Front/Back fields.
-* Deck selector.
-* Note-type selector.
-* Tag editor.
-* Source/context information.
-* Add-to-Anki and cancel actions.
-* Loading, validation, and error states.
-
-The UI operates entirely on the `CardDraft` model rather than talking directly to AnkiConnect.
-
-## 6. AnkiConnect Integration
-
-Create a dedicated AnkiConnect service.
-
-* Detect whether Anki/AnkiConnect is available.
-* Retrieve available decks.
-* Retrieve available note types/models.
-* Retrieve note-type fields.
-* Submit cards with `addNote`.
-* Handle connection and API errors.
-* Potentially check for duplicate notes before adding.
-
-Keep this layer independent from the Svelte UI.
-
-## 7. Settings & Persistence
-
-Add extension-level configuration.
-
-* Default deck.
-* Default note type.
-* Default tags.
-* Field mappings.
-* Source URL behaviour.
-* Card-generation preferences.
-* AnkiConnect connection/status settings where appropriate.
-
-Persist settings using the browser extension's storage APIs.
-
-## 8. User Experience
-
-Polish the core workflow.
-
-Target flow:
-
-**Select text → Create Anki Card → Generate/preview → Edit → Add to Anki → Confirmation**
-
-Consider:
-
-* Keyboard shortcuts.
-* Fast repeated card creation.
-* Clear success/error feedback.
-* Remembering the user's last-selected deck.
-* Minimal interruption to browsing.
-* Ability to create multiple cards from the same page.
-
-## 9. Testing & Compatibility
-
-Test the extension independently of Anki where possible.
-
-* Unit-test card generation and `CardDraft`.
-* Test AnkiConnect requests with mocked responses.
-* Test selection/context extraction.
-* Test Svelte editor behaviour.
-* Test against Chrome initially.
-* Add Firefox/other-browser compatibility later if desired.
-
-## 10. Future Extensions
-
-Leave room for functionality without designing it all upfront.
-
-Potential later features:
-
-* AI-generated cards.
-* Cloze cards.
-* Image extraction.
-* Highlighted source excerpts.
-* Automatic tagging.
-* Duplicate detection.
-* Batch card creation.
-* Multiple cards from a selection.
-* Anki note-type-specific editors.
-* Card templates.
-* Sync/history of recently created cards.
-
-### Suggested implementation order
-
-**1. Extension architecture**
-↓
-**2. Selection & page context**
-↓
-**3. CardDraft model**
-↓
-**4. Basic Svelte editor**
-↓
-**5. AnkiConnect integration**
-↓
-**6. End-to-end MVP workflow**
-↓
-**7. Settings & persistence**
-↓
-**8. UX improvements**
-↓
-**9. AI / advanced card generation**
+Each becomes its own plan file when picked up. Nothing here justifies
+architecture built in advance.

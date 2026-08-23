@@ -1,0 +1,69 @@
+# Run `pre-commit install --install-hooks --hook-type commit-msg` once after
+# cloning. CI runs the same hooks, so a clean commit here means a clean CI run.
+default_install_hook_types: [pre-commit, commit-msg]
+
+# .claude/ is vendored skills and plugin scripts. Never rewrite them —
+# trailing spaces are a hard line break in Markdown, so "fixing" them
+# changes how a skill renders.
+exclude: ^\.claude/(skills|plugins)/
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+      - id: check-added-large-files
+        args: [--maxkb=512]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1-1
+    hooks:
+      - id: shellcheck
+        # caveman-*.sh are vendored skill scripts, not project code.
+        exclude: ^\.claude/hooks/caveman-
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.49.1
+    hooks:
+      - id: markdownlint
+        # .claude/ is vendored skills and plugin docs; CLAUDE.md is a
+        # one-line import directive, not a document.
+        exclude: ^(\.claude/|CLAUDE\.md$)
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        # Default types plus `milestone`, used when archiving a plan so the
+        # summary lands in CHANGELOG.md alongside the generated entries.
+        args:
+          - build
+          - chore
+          - ci
+          - docs
+          - feat
+          - fix
+          - milestone
+          - perf
+          - refactor
+          - revert
+          - style
+          - test
+
+  # The TDD gate's own tests. The gate blocks source modules with no test, so
+  # a broken gate silently stops enforcing TDD.
+  - repo: local
+    hooks:
+      - id: tdd-hook-tests
+        name: TDD hook tests
+        entry: bash .claude/hooks/test-check-tdd.sh
+        language: system
+        files: ^\.claude/hooks/
+        pass_filenames: false

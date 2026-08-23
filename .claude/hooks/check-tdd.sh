@@ -1,26 +1,80 @@
 #!/usr/bin/env bash
-# Block writing non-test .go files when no *_test.go exists in the same directory.
-set -euo pipefail
+# Block writing a TypeScript/Svelte source module when no matching test exists.
+#
+# A module `foo.ts` / `Foo.svelte` is satisfied by a test whose stem matches —
+# `foo.test.ts`, `foo.spec.ts`, `Foo.svelte.test.ts` — found as a sibling, in a
+# sibling `__tests__/`, or anywhere in the repo (mirrored `tests/` trees count).
+#
+# Escape hatch: SKIP_TDD_HOOK=1. AGENTS.md allows skipping TDD only for
+# throwaway prototypes, generated code, and config — ask first.
+set -uo pipefail
+
+[[ "${SKIP_TDD_HOOK:-}" == "1" ]] && exit 0
 
 FILE=$(jq -r '.tool_input.file_path // empty' 2>/dev/null)
+[[ -n "$FILE" ]] || exit 0
 
-# Not a Go file — allow
-[[ "$FILE" == *.go ]] || exit 0
-# Is a test file itself — allow
-[[ "$FILE" == *_test.go ]] && exit 0
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+REL="${FILE#"$ROOT"/}"
 
-DIR=$(dirname "$FILE")
+BASE=$(basename "$REL")
+DIR=$(dirname "$REL")
 
-# cmd/ packages (e.g. cmd/tbuk/main.go) are thin entrypoints with no unit tests
-# by design — don't force a throwaway _test.go just to edit main.go.
-case "$DIR" in
-  cmd | cmd/* | */cmd | */cmd/*) exit 0 ;;
+# --- only TypeScript and Svelte source is gated -----------------------------
+case "$BASE" in
+  *.ts | *.tsx | *.svelte) ;;
+  *) exit 0 ;;
 esac
 
-# If a _test.go already exists in that dir, allow
-ls "$DIR"/*_test.go &>/dev/null && exit 0
+# --- test files, mocks, and fixtures are never gated ------------------------
+case "$BASE" in
+  *.test.* | *.spec.* | *.d.ts) exit 0 ;;
+esac
+case "/$REL/" in
+  */__tests__/* | */__mocks__/* | */fixtures/* | */tests/* | */test/* | */e2e/*)
+    exit 0 ;;
+esac
 
-# No test file found — block
-PKG=$(basename "$DIR")
-printf '{"continue":false,"stopReason":"TDD violation: write %s_test.go FIRST, then implement."}\n' "$PKG"
+# --- config, ambient types, barrels, and thin entrypoints -------------------
+case "$BASE" in
+  *.config.ts | *.config.js | *.setup.ts | *.types.ts | types.ts | index.ts)
+    exit 0 ;;
+esac
+case "/$REL/" in
+  */entrypoints/*) exit 0 ;;
+esac
+
+# --- generated, vendored, and tooling trees ---------------------------------
+case "/$REL/" in
+  */node_modules/* | */dist/* | */build/* | */coverage/* | */.wxt/* | */.svelte-kit/* | */.git/* | */.claude/* | */docs/*)
+    exit 0 ;;
+esac
+
+# --- does a matching test exist? --------------------------------------------
+# `draft.ts` -> draft ; `CardEditor.svelte` -> CardEditor (also CardEditor.svelte)
+STEM="${BASE%.*}"
+
+has_test() {
+  local stem="$1" dir
+  for dir in "$ROOT/$DIR" "$ROOT/$DIR/__tests__"; do
+    compgen -G "$dir/$stem.test.*" >/dev/null && return 0
+    compgen -G "$dir/$stem.spec.*" >/dev/null && return 0
+  done
+  # anywhere else in the repo — mirrored tests/ trees, colocated suites
+  local hit
+  hit=$(find "$ROOT" \
+    -type d \( -name node_modules -o -name .git -o -name dist -o -name build \
+               -o -name coverage -o -name .wxt -o -name .svelte-kit \) -prune -o \
+    -type f \( -name "$stem.test.*" -o -name "$stem.spec.*" \) -print -quit 2>/dev/null)
+  [[ -n "$hit" ]]
+}
+
+if has_test "$STEM"; then exit 0; fi
+# Foo.svelte may be covered by Foo.svelte.test.ts
+[[ "$BASE" == *.svelte ]] && has_test "$BASE" && exit 0
+
+# --- block ------------------------------------------------------------------
+jq -nc --arg stem "$STEM" --arg rel "$REL" \
+  '{continue:false,
+    stopReason:("TDD violation: no test covers \($rel). Write \($stem).test.ts FIRST (sibling, __tests__/, or tests/), watch it fail, then implement.")}'
 exit 0
