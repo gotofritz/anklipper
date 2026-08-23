@@ -189,6 +189,84 @@ generated code only.
 
 The hook has its own tests: `.claude/hooks/test-check-tdd.sh`.
 
+## Checking it in Firefox
+
+The automated suite runs against a fake browser, which is the right trade for
+speed but cannot prove the handful of things only a real browser knows: the
+extension's actual origin, whether the sidebar API behaves, and whether a
+declared host permission was granted. Check those by hand in Firefox.
+
+Run the dev script (`package.json` names it). It builds, then opens Firefox
+with the persistent profile described under *Getting started*.
+
+### 1. The contexts start
+
+Open `about:debugging#/runtime/this-firefox`, find **Anklipper**, and click
+**Inspect**. That console is the background — an event page, unloaded when
+idle. It should be free of errors.
+
+### 2. A message crosses between contexts
+
+Open the sidebar: **View → Sidebar → Anklipper**. The panel should read
+**"Connected to the background."** That is the sidebar sending `ping`, the
+background answering, and the reply arriving — the whole channel, over the
+real API rather than the fake.
+
+"Not connected" followed by an error kind means the round trip failed, and
+the kind names which half: `no-receiver` is a background that never answered.
+
+### 3. The origin helper returns something usable
+
+AnkiConnect allowlists this extension by origin, so this string is what a
+user ends up pasting into its config. Read it either way:
+
+- `about:debugging` shows an **Internal UUID** on the Anklipper card. The
+  origin is `moz-extension://<that-uuid>`, with no trailing slash.
+- Or right-click inside the sidebar → **Inspect**, and in that console run
+  `browser.runtime.getURL("")`, dropping the trailing slash.
+
+The two must agree, and the value must survive a reload — that is what the
+pinned extension id and the persistent profile are for. Deleting
+`.wxt/firefox-data` mints a new UUID and invalidates any allowlist entry
+written against the old one.
+
+### 4. AnkiConnect is reachable from that origin
+
+Needs Anki running with the AnkiConnect add-on installed.
+
+1. In Anki, open **Tools → Add-ons → AnkiConnect → Config** and add your
+   origin to `webCorsOriginList`:
+
+   ```json
+   { "webCorsOriginList": ["http://localhost", "moz-extension://<your-uuid>"] }
+   ```
+
+   Save, then restart Anki.
+
+2. Grant the host permission. Firefox MV3 does **not** grant a declared host
+   permission at install, so open `about:addons` → Anklipper → **Permissions**
+   and enable access to the AnkiConnect host. Skipping this step first time
+   is a useful thing to see fail: the request below is refused, which is the
+   behaviour the runtime permission check exists for.
+
+3. In the sidebar's console:
+
+   ```js
+   await (await fetch("http://127.0.0.1:8765", {
+     method: "POST",
+     body: JSON.stringify({ action: "version", version: 6 }),
+   })).json()
+   ```
+
+   `{ result: 6, error: null }` means the origin, the permission, and the
+   add-on all line up.
+
+### Not testable yet
+
+The content script registers at runtime with no match patterns, so nothing
+injects it until M5 does. The context menu is the same — only its platform
+wrapper exists. Neither will appear in a browser before then.
+
 ## Plans and documentation
 
 - `docs/plans/00-plan.md` — the index. Changes only when scope, ordering, or
