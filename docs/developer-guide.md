@@ -8,9 +8,15 @@ For what the extension does and how to use it, see the
 
 ## Where things stand
 
-M1 has landed: the toolchain, the test harness, and CI are green, and the
-extension builds for Firefox and Chrome while doing nothing yet. Feature work
-starts at M2.
+M2 has landed. The toolchain and CI are green (M1), and the extension now has
+its skeleton: the three contexts start and talk to each other over a typed
+message channel, every `browser.*` call sits behind a port in
+`src/platform/`, and the manifest holds the MVP permission set and the pinned
+extension identity. Nothing user-facing works yet — the card model is M3.
+
+`docs/initial-context.md` is the authoritative description of that
+architecture. Read it before changing a layer boundary, a message shape, or a
+permission.
 
 `docs/plans/00-plan.md` is the index: pinned decisions, the milestone list,
 and which subplan covers each. Read the subplan for the milestone you are
@@ -68,21 +74,40 @@ fake, and that is what tests run against.
 On disk:
 
 - `src/entrypoints/` — background, content script, and the sidebar. WXT reads
-  this directory to generate the manifest. Entrypoints stay thin: they are
-  exempt from the TDD gate, so logic parked there escapes testing.
+  this directory to generate the manifest. Entrypoints stay thin: they build
+  the adapters and hand them to a module under `src/`, because entrypoints are
+  exempt from the TDD gate and logic parked there escapes testing.
+- `src/platform/` — the only place `browser.*` is reached. One module per
+  port: an interface plus its real implementation. In-memory fakes live in
+  `src/platform/fakes/`.
+- `src/messaging/` — the message union, the typed sender, and the handler
+  registry. Depends on ports, never on the browser.
+- `src/background/`, `src/content/`, `src/sidebar/` — what each context does,
+  outside the entrypoint that starts it.
+- `src/core/` — framework-independent domain code. The `Result` type today;
+  the card model from M3.
+- `src/manifest/` — the permission ceiling and the pinned extension identity,
+  imported by `wxt.config.ts` and pinned by a test.
 - `src/` is the alias root. `@/…` resolves to it identically in the build, in
   tests, and in `tsc`.
-- `tests/` — the harness setup files and the tests that assert the harness
-  itself works.
+- `tests/` — the harness setup files, the tests that assert the harness itself
+  works, and the test that holds the generated manifest to the permission
+  ceiling.
+
+Tests sit beside the module they cover. ESLint enforces the bottom of the
+dependency stack: `src/core/`, `src/manifest/`, and `src/messaging/` may not
+import `wxt/browser`, `webextension-polyfill`, or Svelte.
 
 The manifest is generated, not written: `wxt.config.ts` holds the parts that
-are ours, and `.output/<target>/manifest.json` is the result. M1 declares no
-permissions at all; each one arrives with the code that needs it, and the
-ceiling is in `AGENTS.md`.
+are ours — from `src/manifest/manifest.ts` — and `.output/<target>/manifest.json`
+is the result. Two tests pin it: one on what this repository declares, one on
+what WXT emits for each target, since WXT adds Chrome's `sidePanel` permission
+by itself. Widening permissions therefore breaks a test. The ceiling is in
+`AGENTS.md` and the reasoning is in `docs/initial-context.md`.
 
-`docs/initial-context.md` is the authoritative description of architecture,
-messaging, and boundaries once M2 populates it. Update it in the same change
-that alters any of them.
+Update `docs/initial-context.md` in the same change as anything it describes:
+architecture, layer boundaries, messaging, the card model, AnkiConnect
+integration, or permissions.
 
 ## Commit and CI gates
 

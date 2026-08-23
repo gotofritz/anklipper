@@ -62,7 +62,7 @@ AnkiConnect interface precedes the editor that renders its data.
 | # | Milestone | Depends on | Subplan |
 |---|-----------|------------|---------|
 | M1 | Toolchain, test harness, CI — green before any feature work | — | done: `docs/archive/01-toolchain-and-test-harness.md` |
-| M2 | Extension skeleton: manifest, permissions, typed messaging, platform wrappers | M1 | `02-extension-skeleton.md` |
+| M2 | Extension skeleton: manifest, permissions, typed messaging, platform wrappers | M1 | done: `docs/archive/02-extension-skeleton.md` |
 | M3 | `CardDraft`, validation, cloze markup, deterministic generation, port interfaces and fakes | M2 | `03-card-draft-model-and-ports.md` |
 | M4 | AnkiConnect adapter and its error taxonomy, against mocked HTTP | M3 | `04-ankiconnect-adapter.md` |
 | M5 | Selection and page-context extraction; context menu and shortcut | M2, M3 | `05-selection-and-page-context.md` |
