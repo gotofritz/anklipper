@@ -2,6 +2,42 @@
 
 Index: `00-plan.md`. Depends on: nothing. Blocks: everything.
 
+## As built
+
+Archived on completion. Where the milestone landed differently from the plan
+below:
+
+* **Test fixtures live in `src/fixtures/`, not `tests/fixtures/`.** `@/`
+  resolves to `srcDir`, so a fixture outside it cannot prove the alias. Both
+  the alias probe and the Svelte fixture component sit there; the TDD gate
+  already exempts `fixtures/`.
+* **The Node and pnpm versions are stated in the developer guide, not the
+  README.** `AGENTS.md` reserves the README for people who use the extension
+  and do not write software — no build steps. The guide points at `.nvmrc`
+  and `packageManager` rather than repeating the numbers, per the same rule.
+* **MV3 is pinned explicitly.** WXT defaults Firefox to MV2; without
+  `manifestVersion: 3` the Firefox build was MV2 while Chrome was MV3.
+  Confirmed alongside the risk below: Firefox gets `background.scripts` (an
+  event page), Chrome a service worker.
+* **`browser_specific_settings` is emitted for Firefox only**, and carries
+  `data_collection_permissions: { required: ["none"] }`, which AMO now
+  requires of new extensions.
+* **The content script registers at runtime.** A manifest-declared one needs
+  match patterns, and those become install-time host permissions the MVP
+  ceiling disallows.
+* **`pre-commit install --install-hooks --hook-type commit-msg`, as
+  documented, installed only the commit-msg hook** — naming a type overrides
+  `default_install_hook_types`, so the commit-time gate never ran. Fixed in
+  `AGENTS.md` and the developer guide.
+* **Prettier, ESLint, and Vitest had to join the pre-commit config in the
+  same commit as the toolchain**, because pre-commit refuses to run while its
+  own config is unstaged.
+* **Still outstanding: the CI half of test 5, and the first release.** Both
+  need a pull request and a merge to `main`; see *Tests to write first* and
+  *Deliverables* below. The extension was smoke-loaded in headless Chromium
+  with no extension or manifest errors; Firefox was not available in the
+  environment that built this.
+
 ## Goal
 
 A repository where `pnpm test`, `pnpm check`, `pnpm lint`, and `pnpm build`

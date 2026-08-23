@@ -28,7 +28,7 @@ jobs:
   artifact:
     name: Attach extension build
     needs: release-please
-    if: needs.release-please.outputs.released == 'true' && hashFiles('package.json') != ''
+    if: needs.release-please.outputs.released == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write

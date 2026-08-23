@@ -431,12 +431,17 @@ All checks must pass before merge.
 ### Commit-time gate
 
 `.pre-commit-config.yaml` runs on every commit: whitespace and file hygiene,
-`shellcheck`, `markdownlint`, Conventional Commit validation of the message,
-and the TDD hook's own tests. Install it once per clone:
+`shellcheck`, `markdownlint`, Prettier, ESLint, the test suite, Conventional
+Commit validation of the message, and the TDD hook's own tests. Install it
+once per clone:
 
 ```bash
-pre-commit install --install-hooks --hook-type commit-msg
+pre-commit install --install-hooks
 ```
+
+`.pre-commit-config.yaml` declares both hook types it needs, so do not pass
+`--hook-type`: naming one installs only that one, and the commit-time gate
+silently stops running.
 
 CI runs the identical hooks, so a commit that passes locally passes there.
 Vendored content under `.claude/skills/` and `.claude/plugins/` is excluded
@@ -470,8 +475,13 @@ Milestone summaries reach it through the commit that archives a plan, typed
 
 ```text
 milestone(m3): CardDraft, cloze markup, and the port interfaces
+
 (docs/archive/2026-05-24-2013-8a8c2cf-03-card-draft-model-and-ports.md)
 ```
+
+The filename goes in the body, after a blank line: Conventional Commits
+treats the second line of a subject as malformed, and the commit-msg hook
+rejects it.
 
 That type is in the allowlist in `.pre-commit-config.yaml` and has its own
 **Milestones** section in `release-please-config.json`, so the narrative lands

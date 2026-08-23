@@ -1,0 +1,17 @@
+.output/
+.wxt/
+coverage/
+node_modules/
+pnpm-lock.yaml
+
+# Vendored skills and plugin scripts; trailing spaces are a hard line break in
+# Markdown, so reformatting them changes how a skill renders.
+.claude/
+
+# markdownlint owns Markdown, and its 80-column rule and Prettier's reflow
+# disagree. One formatter per file type.
+*.md
+
+# release-please rewrites this on every release; a formatter fighting it would
+# turn every release PR red.
+.release-please-manifest.json
