@@ -96,7 +96,9 @@ They check whitespace and file hygiene, shell scripts, Markdown, Prettier
 formatting, ESLint, the test suite, and that the commit message follows
 Conventional Commits. CI runs the same hooks, so a commit that passes locally
 passes there. Vendored content under `.claude/skills/` and `.claude/plugins/`
-is excluded.
+is excluded, as are the files release-please rewrites on every release —
+`CHANGELOG.md` from markdownlint, `.release-please-manifest.json` from
+Prettier.
 
 CI additionally typechecks, tests, and builds both targets. Both jobs are
 required status checks on `main`: a red run blocks merge.

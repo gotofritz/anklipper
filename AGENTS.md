@@ -452,6 +452,12 @@ Vendored content under `.claude/skills/` and `.claude/plugins/` is excluded
 rather than reformatted — it is not ours, and trailing spaces are a hard
 line break in Markdown.
 
+Generated files are excluded from the formatter or linter that owns their
+shape: `CHANGELOG.md` from markdownlint and `.release-please-manifest.json`
+from Prettier, both because release-please rewrites them on every release. A
+linter cannot win an argument with a generator, and losing it turns each
+release pull request red for no reason.
+
 ### Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request and every push to
