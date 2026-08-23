@@ -40,9 +40,15 @@ export default ts.config(
   },
   {
     // Ports and adapters (P3): the domain layer talks to interfaces, never to
-    // the browser or to a UI framework. M3 creates these directories and
-    // widens the list; until then the rule is wired but has nothing to catch.
-    files: ["src/core/**/*.ts", "src/lib/**/*.ts"],
+    // the browser or to a UI framework. `src/platform/` is the exception by
+    // definition — it is the adapter layer, and the only place `browser.*` is
+    // reached (2.3). M3 widens this list again with the card model.
+    files: [
+      "src/core/**/*.ts",
+      "src/lib/**/*.ts",
+      "src/manifest/**/*.ts",
+      "src/messaging/**/*.ts",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",
