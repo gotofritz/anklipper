@@ -47,7 +47,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "lcov"],
       include: ["src/**/*.{ts,svelte}"],
-      exclude: ["src/entrypoints/**", "src/fixtures/**"],
+      exclude: ["src/entrypoints/**", "src/fixtures/**", "**/*.test.ts"],
     },
   },
 });

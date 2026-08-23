@@ -8,9 +8,15 @@ For what the extension does and how to use it, see the
 
 ## Where things stand
 
-M1 has landed: the toolchain, the test harness, and CI are green, and the
-extension builds for Firefox and Chrome while doing nothing yet. Feature work
-starts at M2.
+M2 has landed. The toolchain and CI are green (M1), and the extension now has
+its skeleton: the three contexts start and talk to each other over a typed
+message channel, every `browser.*` call sits behind a port in
+`src/platform/`, and the manifest holds the MVP permission set and the pinned
+extension identity. Nothing user-facing works yet — the card model is M3.
+
+`docs/initial-context.md` is the authoritative description of that
+architecture. Read it before changing a layer boundary, a message shape, or a
+permission.
 
 `docs/plans/00-plan.md` is the index: pinned decisions, the milestone list,
 and which subplan covers each. Read the subplan for the milestone you are
@@ -68,21 +74,40 @@ fake, and that is what tests run against.
 On disk:
 
 - `src/entrypoints/` — background, content script, and the sidebar. WXT reads
-  this directory to generate the manifest. Entrypoints stay thin: they are
-  exempt from the TDD gate, so logic parked there escapes testing.
+  this directory to generate the manifest. Entrypoints stay thin: they build
+  the adapters and hand them to a module under `src/`, because entrypoints are
+  exempt from the TDD gate and logic parked there escapes testing.
+- `src/platform/` — the only place `browser.*` is reached. One module per
+  port: an interface plus its real implementation. In-memory fakes live in
+  `src/platform/fakes/`.
+- `src/messaging/` — the message union, the typed sender, and the handler
+  registry. Depends on ports, never on the browser.
+- `src/background/`, `src/content/`, `src/sidebar/` — what each context does,
+  outside the entrypoint that starts it.
+- `src/core/` — framework-independent domain code. The `Result` type today;
+  the card model from M3.
+- `src/manifest/` — the permission ceiling and the pinned extension identity,
+  imported by `wxt.config.ts` and pinned by a test.
 - `src/` is the alias root. `@/…` resolves to it identically in the build, in
   tests, and in `tsc`.
-- `tests/` — the harness setup files and the tests that assert the harness
-  itself works.
+- `tests/` — the harness setup files, the tests that assert the harness itself
+  works, and the test that holds the generated manifest to the permission
+  ceiling.
+
+Tests sit beside the module they cover. ESLint enforces the bottom of the
+dependency stack: `src/core/`, `src/manifest/`, and `src/messaging/` may not
+import `wxt/browser`, `webextension-polyfill`, or Svelte.
 
 The manifest is generated, not written: `wxt.config.ts` holds the parts that
-are ours, and `.output/<target>/manifest.json` is the result. M1 declares no
-permissions at all; each one arrives with the code that needs it, and the
-ceiling is in `AGENTS.md`.
+are ours — from `src/manifest/manifest.ts` — and `.output/<target>/manifest.json`
+is the result. Two tests pin it: one on what this repository declares, one on
+what WXT emits for each target, since WXT adds Chrome's `sidePanel` permission
+by itself. Widening permissions therefore breaks a test. The ceiling is in
+`AGENTS.md` and the reasoning is in `docs/initial-context.md`.
 
-`docs/initial-context.md` is the authoritative description of architecture,
-messaging, and boundaries once M2 populates it. Update it in the same change
-that alters any of them.
+Update `docs/initial-context.md` in the same change as anything it describes:
+architecture, layer boundaries, messaging, the card model, AnkiConnect
+integration, or permissions.
 
 ## Commit and CI gates
 
@@ -163,6 +188,84 @@ them to dodge the gate. `SKIP_TDD_HOOK=1` bypasses it, for prototypes and
 generated code only.
 
 The hook has its own tests: `.claude/hooks/test-check-tdd.sh`.
+
+## Checking it in Firefox
+
+The automated suite runs against a fake browser, which is the right trade for
+speed but cannot prove the handful of things only a real browser knows: the
+extension's actual origin, whether the sidebar API behaves, and whether a
+declared host permission was granted. Check those by hand in Firefox.
+
+Run the dev script (`package.json` names it). It builds, then opens Firefox
+with the persistent profile described under *Getting started*.
+
+### 1. The contexts start
+
+Open `about:debugging#/runtime/this-firefox`, find **Anklipper**, and click
+**Inspect**. That console is the background — an event page, unloaded when
+idle. It should be free of errors.
+
+### 2. A message crosses between contexts
+
+Open the sidebar: **View → Sidebar → Anklipper**. The panel should read
+**"Connected to the background."** That is the sidebar sending `ping`, the
+background answering, and the reply arriving — the whole channel, over the
+real API rather than the fake.
+
+"Not connected" followed by an error kind means the round trip failed, and
+the kind names which half: `no-receiver` is a background that never answered.
+
+### 3. The origin helper returns something usable
+
+AnkiConnect allowlists this extension by origin, so this string is what a
+user ends up pasting into its config. Read it either way:
+
+- `about:debugging` shows an **Internal UUID** on the Anklipper card. The
+  origin is `moz-extension://<that-uuid>`, with no trailing slash.
+- Or right-click inside the sidebar → **Inspect**, and in that console run
+  `browser.runtime.getURL("")`, dropping the trailing slash.
+
+The two must agree, and the value must survive a reload — that is what the
+pinned extension id and the persistent profile are for. Deleting
+`.wxt/firefox-data` mints a new UUID and invalidates any allowlist entry
+written against the old one.
+
+### 4. AnkiConnect is reachable from that origin
+
+Needs Anki running with the AnkiConnect add-on installed.
+
+1. In Anki, open **Tools → Add-ons → AnkiConnect → Config** and add your
+   origin to `webCorsOriginList`:
+
+   ```json
+   { "webCorsOriginList": ["http://localhost", "moz-extension://<your-uuid>"] }
+   ```
+
+   Save, then restart Anki.
+
+2. Grant the host permission. Firefox MV3 does **not** grant a declared host
+   permission at install, so open `about:addons` → Anklipper → **Permissions**
+   and enable access to the AnkiConnect host. Skipping this step first time
+   is a useful thing to see fail: the request below is refused, which is the
+   behaviour the runtime permission check exists for.
+
+3. In the sidebar's console:
+
+   ```js
+   await (await fetch("http://127.0.0.1:8765", {
+     method: "POST",
+     body: JSON.stringify({ action: "version", version: 6 }),
+   })).json()
+   ```
+
+   `{ result: 6, error: null }` means the origin, the permission, and the
+   add-on all line up.
+
+### Not testable yet
+
+The content script registers at runtime with no match patterns, so nothing
+injects it until M5 does. The context menu is the same — only its platform
+wrapper exists. Neither will appear in a browser before then.
 
 ## Plans and documentation
 

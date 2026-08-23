@@ -2,6 +2,75 @@
 
 Index: `00-plan.md`. Depends on: M1. Blocks: M3–M12.
 
+## As built
+
+Archived on completion. Where the milestone landed differently from the plan
+below:
+
+* **`Result` came first, and lives in `src/core/`.** 2.2 requires every reply
+  to be Result-shaped, so the type had to exist before the message channel
+  did. `isResult` is part of it: a reply arriving over the channel is
+  `unknown` until proven otherwise, and that check is what produces
+  `malformed-reply`.
+* **The transport and the typed layer have separate error types.**
+  `RuntimeMessagingPort` returns `TransportError` (`no-receiver`,
+  `transport-failed`); `MessagingError` is those two kinds plus
+  `unknown-message`, `handler-failed`, and `malformed-reply`. Otherwise
+  `src/platform/` would have had to import from `src/messaging/`, which
+  depends on it — the dependency stays one-directional instead.
+* **`onMessage` uses `return true` plus `sendResponse`, not a returned
+  promise.** Firefox accepts both; Chrome MV3 accepts only this one, and so
+  does the fake browser. A returned promise would have passed tests on
+  neither.
+* **The message union is a single member, `ping`.** It is what the sidebar
+  uses to learn the background is up, and what proves the round trip in a
+  real browser. `ResponseMap` carries the reply types alongside it, so adding
+  a message is one member plus one entry.
+* **The registry refuses a second handler for a type**, rather than letting
+  the later registration win silently. Two contexts wiring the same type is a
+  bug, and the silent version is the expensive kind to find.
+* **`src/manifest/manifest.ts` holds the permission ceiling and the pinned
+  identity**, and `wxt.config.ts` imports it. Test 6 is therefore two tests:
+  one on what this repository declares, one on the manifest WXT actually
+  emits for each target. The second exists because WXT adds Chrome's
+  `sidePanel` permission itself, from the sidepanel entrypoint — a permission
+  can be widened from either side.
+* **Test 6 builds both targets inside Vitest**, through WXT's programmatic
+  `build()`. About a second per target, against the artefact that ships.
+* **The Chrome `key` is committed without its private half.** It fixes the id
+  an unpacked build loads under, which is what a developer's AnkiConnect
+  allowlist entry is written against — that is what 2.4 asks of it. The
+  Chrome Web Store issues its own key at publish, so a store build drops the
+  field; there is no CRX signing key to keep.
+* **The sidebar wrapper takes its backing APIs as a parameter.**
+  `sidebarAction` is Firefox-only and absent from the shared typings, so
+  `createSidebar(backings)` is structural and `createBrowserSidebar()` is the
+  one place that asserts the browser has that shape. Test 9 runs the same
+  contract against a fake of each API.
+* **`SidebarPort.open` is not `async`.** Both browsers require the call
+  inside the gesture's own task, so the wrapper reaches the backing API
+  before it awaits anything, and a test asserts it — an `await` added in
+  front of it later would break M5's context menu in a way no type checks.
+* **The sidebar panel shows its connection state.** `src/sidebar/Panel.svelte`
+  takes a `connect` function rather than building a messenger, so it stays
+  free of `browser.*` and every state is testable. It is what makes the
+  round trip observable in a real browser, which the done-when asks for.
+* **ESLint's boundary rule now covers `src/manifest/` and `src/messaging/`**
+  as well as `src/core/`. `src/manifest/` is loaded by WXT at build time,
+  outside any browser, so an accidental `wxt/browser` import there would break
+  the build rather than a test.
+* **Verified in headless Chromium, not Firefox** — the environment that built
+  this has no Firefox, as at M1. The Chrome build loads under the pinned id
+  `ljhmjineomhkgcghppjplainocnjnfli`, the sidebar's ping round trip completes
+  (`Connected to the background.`), the origin helper returns
+  `chrome-extension://ljhmjineomhkgcghppjplainocnjnfli`, and there are no
+  extension errors. The Firefox half of the done-when — including pasting the
+  `moz-extension://` origin into `webCorsOriginList` and reaching AnkiConnect
+  — is still outstanding and needs a machine with Firefox and Anki.
+* **The context menu is not created.** Only its wrapper exists; the menu
+  itself arrives in M5 with the code that handles a click, as the non-goals
+  say.
+
 ## Goal
 
 The three extension contexts exist, can talk to each other over a typed

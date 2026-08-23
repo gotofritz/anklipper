@@ -1,5 +1,12 @@
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "wxt";
+
+import { manifestExtras } from "./src/manifest/manifest";
+
+// A temporary profile draws a new moz-extension:// UUID on every reload, which
+// would break the developer's own AnkiConnect allowlist entry (1.10).
+const FIREFOX_PROFILE = resolve(".wxt/firefox-data");
 
 // Firefox is the default target (P5); `pnpm dev:chrome` / `pnpm build:chrome`
 // keep the Chrome build compiling.
@@ -13,24 +20,11 @@ export default defineConfig({
     name: "Anklipper",
     description:
       "Turn text selected on a web page into an Anki card, via AnkiConnect.",
-    // M1 declares no permissions. The permission set and the host permission
-    // for AnkiConnect arrive in M2, with the code that needs them.
-    ...(browser === "firefox"
-      ? {
-          browser_specific_settings: {
-            gecko: {
-              // Pinned so the moz-extension:// origin survives reloads —
-              // AnkiConnect allowlists the extension by origin, and a new UUID
-              // would break the user's own allowlist entry (P8).
-              id: "anklipper@gotofritz.net",
-              strict_min_version: "128.0",
-              // Required by AMO for new extensions. Nothing leaves the browser
-              // except to the local AnkiConnect on loopback.
-              data_collection_permissions: { required: ["none"] },
-            },
-          },
-        }
-      : {}),
+    // The permission ceiling and the pinned extension identity live in
+    // `src/manifest/manifest.ts`, where a test pins them (2.4, 2.5). WXT adds
+    // the sidebar surface itself, from the sidepanel entrypoint:
+    // `sidebar_action` on Firefox, `side_panel` plus its permission on Chrome.
+    ...manifestExtras(browser),
   }),
   zip: {
     // AMO needs sources it can rebuild from; it does not need the plans or
@@ -38,9 +32,19 @@ export default defineConfig({
     excludeSources: ["docs/**", ".claude/**"],
   },
   webExt: {
-    // A temporary profile draws a new moz-extension:// UUID on every reload,
-    // which would break the developer's own AnkiConnect allowlist entry (1.10).
-    firefoxProfile: resolve(".wxt/firefox-data"),
+    firefoxProfile: FIREFOX_PROFILE,
     keepProfileChanges: true,
+  },
+  hooks: {
+    // web-ext treats `firefoxProfile` as a directory only if it already
+    // exists; otherwise it looks for a *named* profile and fails with "cannot
+    // be resolved to a profile path". It will create the directory itself,
+    // but only under --profile-create-if-missing, which WXT does not forward.
+    // So create it here, on the last hook before the runner opens the browser.
+    "server:started"(wxt) {
+      if (wxt.config.browser === "firefox") {
+        mkdirSync(FIREFOX_PROFILE, { recursive: true });
+      }
+    },
   },
 });

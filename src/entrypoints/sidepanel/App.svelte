@@ -1,8 +1,12 @@
 <script lang="ts">
-  // Stub. The card editor is M6; M1 only proves Svelte compiles and mounts.
-  const title = "Anklipper";
+  import { createMessenger } from "@/messaging/messenger";
+  import { createRuntimeMessaging } from "@/platform/runtime-messaging";
+  import Panel from "@/sidebar/Panel.svelte";
+  import { pingBackground } from "@/sidebar/connect";
+
+  // A shell: it builds the adapters and hands them to the panel, which is
+  // where the tested behaviour is. The card editor arrives in M6.
+  const messenger = createMessenger(createRuntimeMessaging());
 </script>
 
-<main>
-  <h1>{title}</h1>
-</main>
+<Panel connect={() => pingBackground(messenger)} />
