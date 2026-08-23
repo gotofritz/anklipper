@@ -57,6 +57,31 @@ repos:
           - style
           - test
 
+  # TypeScript and Svelte. `language: system` because these run the project's
+  # own pnpm scripts — the same commands CI runs, so one green run means both.
+  - repo: local
+    hooks:
+      - id: prettier
+        name: Prettier
+        entry: pnpm exec prettier --write --ignore-unknown
+        language: system
+        files: \.(ts|js|mjs|cjs|svelte|json|ya?ml|css|html)$
+        exclude: ^\.claude/
+
+      - id: eslint
+        name: ESLint
+        entry: pnpm exec eslint --fix
+        language: system
+        files: \.(ts|js|mjs|cjs|svelte)$
+        exclude: ^\.claude/
+
+      - id: vitest
+        name: Vitest
+        entry: pnpm test
+        language: system
+        files: \.(ts|js|mjs|cjs|svelte)$
+        pass_filenames: false
+
   # The TDD gate's own tests. The gate blocks source modules with no test, so
   # a broken gate silently stops enforcing TDD.
   - repo: local
