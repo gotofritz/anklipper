@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A superseded run on the same branch is wasted compute; cancel it. Never
+# cancel on main, where each run is the record for a merged commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      # Same hooks a contributor runs locally, so green here means green there.
+      - uses: pre-commit/action@v3.0.1
+
+  build:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    # Activates the moment M1 lands package.json. Until then the project has
+    # no scripts to run, and a job referencing them would fail on every push.
+    if: hashFiles('package.json') != ''
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
