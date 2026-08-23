@@ -231,6 +231,7 @@ the causes it reports.
 | `errors.ts` | AnkiConnect's error strings, turned into typed causes. |
 | `mapping.ts` | `CardDraft` → note params, and note-type descriptors. |
 | `client.ts` | The port implementation, the probe, and the handshake. |
+| `dev-harness.ts` | A development-only harness for the manual checks, absent from every build. |
 
 **Nothing here imports `browser.*` or Svelte,** and ESLint enforces it for the
 directory. The two things the adapter needs from the browser are injected as

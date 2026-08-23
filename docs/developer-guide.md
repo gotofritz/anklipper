@@ -270,6 +270,116 @@ Needs Anki running with the AnkiConnect add-on installed.
    `{ result: 6, error: null }` means the origin, the permission, and the
    add-on all line up.
 
+### 5. The adapter, against a real Anki
+
+Everything above proves the stack lines up. This proves the AnkiConnect
+adapter reads it correctly — the questions its automated tests cannot answer,
+because they run against a stubbed `fetch`.
+
+Development builds expose a harness on the background console's global,
+wired in `src/entrypoints/background.ts` behind `import.meta.env.DEV` and
+implemented in `src/anki/dev-harness.ts`. The guard is what keeps it out of a
+release: `wxt build` folds it away, and the harness is absent from the
+production bundle. Confirming that yourself needs `rm -rf .output` first —
+a stale directory will happily answer the question with a previous build's
+output. Open the background console as in step 1, and:
+
+```js
+await anklipper.survey()
+```
+
+`survey()` reads only — it never adds a note — and what it returns is safe to
+paste into an issue: it carries the origin, and never the API key.
+
+**Order matters.** Checks 5.1 to 5.3 are destroyed the moment the origin is
+allowlisted, so run them *before* step 4's config edit. If you have already
+done step 4, remove your origin from `webCorsOriginList` and restart Anki to
+get back to a first-run state.
+
+#### 5.1 A rejected origin is not a dead port
+
+With Anki running, the add-on installed, and your origin **not** in
+`webCorsOriginList`, `await anklipper.probe()` should report
+`cause.kind === "origin-rejected"`, `confident: false`, and a `cause.origin`
+equal to the string from step 3.
+
+Now quit Anki completely and probe again. That one should report
+`anki-not-running`.
+
+**If both report the same kind, that is the finding.** The adapter separates
+them with a `no-cors` request — which is supposed to resolve opaque when
+something is listening and reject when nothing is — and that technique has
+never been confirmed on Firefox. Both causes ship `confident: false` with the
+other listed as an alternative, so a wrong guess degrades to two suggested
+fixes rather than one wrong one, but the detection would need reworking.
+
+#### 5.2 The handshake, from a clean allowlist
+
+Anki running, origin still not allowlisted:
+
+```js
+await anklipper.requestPermission()
+```
+
+Expect `{ kind: "asked" }`, and a permission dialog inside Anki. Approve it,
+then `await anklipper.probe()` — expect `{ kind: "connected", apiVersion: 6 }`
+with no Anki restart. Reopen AnkiConnect's config and confirm the origin it
+appended is character-for-character the one from step 3.
+
+Declining instead should give `permission-denied` with `needsManualFix`. An
+origin in the add-on's `ignoreOriginList` never sees the dialog again, which
+is why that cause is not a retry.
+
+#### 5.3 A missing host permission is caught before the network
+
+Turn the host permission back off in `about:addons`, open the Network tab,
+and probe. Expect `permission-missing` and **no request at all**.
+
+#### 5.4 Note types, including a custom cloze one
+
+Connected, `survey()` should list every deck and note type. The interesting
+field is `clozeNoteTypes`.
+
+In Anki, **Tools → Manage Note Types → Add**, clone `Cloze`, and name it
+something with no "cloze" in it. It must still appear in `clozeNoteTypes` —
+that is the check that the flavour is read from the templates rather than
+guessed from the name, and the one the name heuristic fails.
+
+#### 5.5 Adding a note, and the empty-cloze refusal
+
+These write to your collection. Every sample is tagged
+`anklipper-manual-check`, so the run is one search away in Anki's browser
+afterwards.
+
+```js
+const { noteTypes } = await anklipper.survey()
+const basic = /* the NoteType you want, from client.noteTypes() */
+await anklipper.client.addNote(anklipper.drafts.basic("Default", basic))
+```
+
+Then the two cloze paths, against a cloze note type:
+
+- `drafts.cloze(...)` should add, with its `{{c1::…}}` intact in Anki.
+- `drafts.emptyCloze(...)` should be refused as `empty-cloze`.
+
+For the refusal, **record the exact error string Anki returned** and compare
+it with the patterns in `src/anki/errors.ts`. The adapter also settles this
+case by inspecting the draft, so it should be caught either way — but the
+pattern is worth keeping accurate.
+
+#### 5.6 An API key, if you use one
+
+Set `apiKey` in AnkiConnect's config, restart Anki, and probe with no key
+configured. Expect `api-key-required`.
+
+#### What to record
+
+Note the AnkiConnect version you tested against. Its canonical repository has
+moved to SourceHut and the GitHub tree may lag, so "which version" is part of
+the result. The outstanding items are listed under **Not done, and why** in
+`docs/archive/04-ankiconnect-adapter.md`; that is the file to update as they
+are confirmed.
+
 ### Not testable yet
 
 The content script registers at runtime with no match patterns, so nothing

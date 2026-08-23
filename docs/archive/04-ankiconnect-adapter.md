@@ -70,7 +70,12 @@ The manual passes under *Done when* need a running Anki and a real Firefox
 profile, and neither exists in the environment this was built in. Every one of
 them is still outstanding, and each is a case where the code encodes a
 reasonable reading of the add-on's behaviour that has not been confirmed
-against the installed version:
+against the installed version.
+
+`src/anki/dev-harness.ts` exists to run them: a development-only harness the
+background entrypoint puts on the console's global, so the adapter can be
+driven from a real extension origin. The ordered procedure is under *Checking
+it in Firefox* in the developer guide. What is still unconfirmed:
 
 * the happy path and the `origin-rejected` path against a real Anki;
 * that the origin the adapter reports is the one AnkiConnect accepts when
