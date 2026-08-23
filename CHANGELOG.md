@@ -9,6 +9,13 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [0.3.0](https://github.com/gotofritz/anklipper/compare/v0.2.0...v0.3.0) (2026-08-23)
+
+
+### Features
+
+* **m3:** CardDraft, cloze markup, and the port interfaces ([#11](https://github.com/gotofritz/anklipper/issues/11)) ([70db748](https://github.com/gotofritz/anklipper/commit/70db748f625121303c49ed43ac174b96b5d8e71e))
+
 ## [0.2.0](https://github.com/gotofritz/anklipper/compare/v0.1.1...v0.2.0) (2026-08-23)
 
 
