@@ -7,6 +7,13 @@ Milestone summaries appear here too: when a plan is archived, its commit uses
 the `milestone` type and names the archived file, so the narrative sits in the
 same list as the changes it covers.
 
+## 0.1.0 (2026-08-23)
+
+
+### Features
+
+* **m1:** toolchain, test harness, and CI ([#4](https://github.com/gotofritz/anklipper/issues/4)) ([adc2832](https://github.com/gotofritz/anklipper/commit/adc2832157929062f353a6be3d6482852b61cab6))
+
 ## 0.0.0
 
 - Repository created: licence, contributor and agent guidelines, milestone
