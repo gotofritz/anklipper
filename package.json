@@ -1,6 +1,6 @@
 {
   "name": "anklipper",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Turn text selected on a web page into an Anki card, via AnkiConnect.",
   "license": "MIT",
