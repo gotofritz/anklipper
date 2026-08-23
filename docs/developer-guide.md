@@ -108,17 +108,26 @@ request open on `main` summarising everything since the last release;
 merging it tags the version, publishes a GitHub Release, and attaches the
 built extension. Nothing is released until someone merges that PR.
 
-`CHANGELOG.md` is generated — never edit it by hand. Milestone summaries get
-in through the commit that archives a plan, typed `milestone` and naming the
-archived file:
+`CHANGELOG.md` is generated — never edit it by hand. One list, so there is
+never a question of which changelog to read.
+
+Pull requests are **squash-merged**, so the pull request title is the only
+commit that reaches `main` — and the only thing release-please renders. Write
+it as a Conventional Commit; a malformed title is dropped from the changelog
+silently, and the commit-msg hook cannot catch it, because that hook runs on
+the local commits the squash discards.
+
+A milestone's pull request is titled `feat(mN): <what shipped>`. The scope is
+the link to its plan: `m3` resolves to `docs/archive/03-*.md`, which is why
+archived plans keep their number and carry no date or SHA in the filename.
+Open the pull request description with an absolute link to that plan, so it
+reaches the squash commit body:
 
 ```text
-milestone(m3): CardDraft, cloze markup, and the port interfaces
-
-(docs/archive/2026-05-24-2013-8a8c2cf-03-card-draft-model-and-ports.md)
+Plan: https://github.com/gotofritz/anklipper/blob/main/docs/archive/03-card-draft-model-and-ports.md
 ```
 
-One list, so there is never a question of which changelog to read.
+`AGENTS.md` has the full rules under *Releases*.
 
 ## Testing
 
@@ -159,10 +168,9 @@ The hook has its own tests: `.claude/hooks/test-check-tdd.sh`.
   a pinned decision changes.
 - `docs/plans/NN-<name>.md` — one subplan per milestone.
 - `docs/archive/` — completed plans, archived in the same pull request that
-  completes them, named
-  `YYYY-MM-DD-HHMM-<shortsha>-<original-name>.md`.
-- `CHANGELOG.md` — generated. Archive a plan with a `milestone`-typed commit
-  and the summary appears there.
+  completes them, keeping their number: `NN-<original-name>.md`.
+- `CHANGELOG.md` — generated. A milestone appears as the entry its pull
+  request title becomes, and its scope names the archived plan.
 - `README.md` — for people using the extension, not building it. Keep it in
   plain language.
 

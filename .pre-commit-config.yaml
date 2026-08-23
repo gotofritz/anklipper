@@ -41,8 +41,9 @@ repos:
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
-        # Default types plus `milestone`, used when archiving a plan so the
-        # summary lands in CHANGELOG.md alongside the generated entries.
+        # The Conventional Commits defaults. A pull request title is what
+        # actually reaches main under squash merge, and this hook cannot see
+        # it — see the Releases section of AGENTS.md.
         args:
           - build
           - chore
@@ -50,7 +51,6 @@ repos:
           - docs
           - feat
           - fix
-          - milestone
           - perf
           - refactor
           - revert
