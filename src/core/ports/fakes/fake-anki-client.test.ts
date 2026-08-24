@@ -61,8 +61,8 @@ describe("createFakeAnkiClient", () => {
   it("fails every action while it is failing, not only the one under test", async () => {
     const client = createFakeAnkiClient();
     client.failWith({
-      kind: "origin-rejected",
-      message: "origin not allowlisted",
+      kind: "addon-missing",
+      message: "no AnkiConnect on the port",
     });
 
     expect(isErr(await client.deckNames())).toBe(true);
@@ -104,11 +104,11 @@ describe("createFakeAnkiClient", () => {
 
     expect(await client.probe()).toEqual({ kind: "connected", apiVersion: 6 });
 
-    client.failWith({ kind: "origin-rejected", message: "not allowlisted" });
+    client.failWith({ kind: "anki-not-running", message: "nothing answered" });
 
     expect(await client.probe()).toMatchObject({
       kind: "unavailable",
-      cause: { kind: "origin-rejected" },
+      cause: { kind: "anki-not-running" },
     });
   });
 

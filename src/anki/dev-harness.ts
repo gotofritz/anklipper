@@ -15,12 +15,13 @@ import { createAnkiClient, describeAnkiConnection } from "./client";
  * A hand-driven harness for the manual checks M4's plan asks for.
  *
  * The adapter's automated tests run against a stubbed `fetch`, which proves
- * every branch and proves nothing about the add-on. The remaining questions —
- * whether a `no-cors` request really separates a dead port from a rejected
- * origin on Firefox, whether the origin reported is the one AnkiConnect
- * accepts, what Anki actually says when a cloze note has no deletions — can
- * only be answered from a real extension origin against a real Anki. This is
- * what the background console drives to answer them.
+ * every branch and proves nothing about the add-on. Questions like whether the
+ * add-on enforces its own origin allowlist, whether a note type's cloze
+ * flavour can be read from its templates, and what Anki does with a cloze note
+ * carrying no deletions can only be answered from a real extension origin
+ * against a real Anki. This is what the background console drives to answer
+ * them — and answering three of them is what removed `origin-rejected` and
+ * `empty-cloze` from the adapter.
  *
  * Development builds only: `src/entrypoints/background.ts` guards the wiring
  * behind `import.meta.env.DEV`, so nothing here reaches a release.
@@ -135,8 +136,6 @@ export function createDevHarness(deps: DevHarnessDeps): DevHarness {
               kind: "permission-missing",
               message: `the extension has not been granted access to ${describeAnkiConnection(config).endpoint}`,
             },
-            confident: true,
-            alternatives: [],
           };
 
       const head = {

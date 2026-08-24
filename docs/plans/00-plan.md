@@ -92,7 +92,7 @@ Each settled in the subplan named; reversing one means editing that subplan.
 |----------|------------|-------|
 | Note-type switch: drop, remap, or positional? | Remap by field name; unmatched content stashed and restorable | M3, 3.2 |
 | Duplicate detection in the MVP? | Yes, via `canAddNotes`, non-blocking | M4, 4.4 |
-| Is the `requestPermission` handshake needed at all? | **Reopened.** M4's manual pass reached AnkiConnect from a Firefox background page whose origin was absent from `webCorsOriginList`. Settle in M9 | P9, M4, M9 |
+| Is the `requestPermission` handshake needed at all? | **Reopened.** M4's manual pass reached AnkiConnect from a Firefox background page whose origin was absent from `webCorsOriginList`, on Anki 25.09.4. M4 removed `origin-rejected` on that evidence; the handshake is kept, unverified, pending M9 | P9, M4 4.14, M9 |
 | How much surrounding context? | Nearest block ancestor, capped at 1 000 chars; selection capped at 10 000 | M5, 5.3 |
 | Rich text or plain? | Plain on capture; rich in the editor from M10 | M5 5.2, M10 10.3 |
 | Which browser first? | Firefox; Chrome after the first release | P5, M9 9.5 |

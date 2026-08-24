@@ -1,5 +1,3 @@
-import type { AnkiError, AnkiErrorKind } from "@/core/ports/types";
-
 /**
  * Types local to the AnkiConnect adapter (M4). The port's own vocabulary —
  * `AnkiError`, `AnkiConnection`, `AnkiHandshake` — lives in
@@ -25,19 +23,6 @@ export interface AnkiRequest {
   readonly params?: Readonly<Record<string, unknown>>;
   /** Present only when an API key is configured, and never on the handshake (4.8). */
   readonly key?: string;
-}
-
-/**
- * A failure plus how well the evidence pins it down.
- *
- * A rejected origin and a dead port both surface as a failed `fetch`, so the
- * transport's answer is a best guess with the alternatives it could not rule
- * out. Everything above the probe throws the extra away and keeps the
- * `AnkiError`; the probe is the one caller that reports it (4.3).
- */
-export interface AnkiFailure extends AnkiError {
-  readonly confident: boolean;
-  readonly alternatives: readonly AnkiErrorKind[];
 }
 
 /** The note as `addNote` and `canAddNotes` want it. */

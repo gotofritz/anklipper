@@ -67,8 +67,10 @@ below:
 ### The manual pass, and what it changed
 
 Run against a real Anki on a real Firefox profile after the adapter was
-written, using `src/anki/dev-harness.ts`. Three of the plan's assumptions did
-not survive it.
+written, using `src/anki/dev-harness.ts`. Anki **25.09.4**, AnkiConnect from
+AnkiWeb last modified **2025-11-09** (its `meta.json` declares no version
+string; `mod` is `1762717231`). Three of the plan's assumptions did not
+survive it.
 
 **`origin-rejected` did not reproduce, and looks unreachable.** The plan calls
 it "the single most likely first-run state". It is not a state this extension
@@ -85,11 +87,20 @@ Two things follow. `webCorsOriginList` constrains web pages and not this
 extension — which is also the sharpest argument against ever suggesting `"*"`,
 since web pages are the one class it does constrain. And **P9 is reopened** in
 the plan index: the `requestPermission` handshake may be solving a problem the
-extension does not have. The handshake, `origin-rejected`, and the `no-cors`
-discrimination are all kept — they cost little, and the add-on's behaviour
-across versions and forks is wider than one installation — but none of them is
-confirmed, and the plan's reasoning for them is now known to be wrong on this
-version.
+extension does not have.
+
+**So `origin-rejected` and the `no-cors` probe are gone**, and the confidence
+flag with them. The flag existed to express the ambiguity between a rejected
+origin and a dead port; with one of the two removed, every cause the probe can
+report is determinate, and a flag that is always `true` says nothing. That
+takes `AnkiConnection` down to `connected | unavailable`, deletes the
+adapter-local `AnkiFailure`, and removes deliverable 4.3's "plus a confidence
+flag" along with the plan's error-taxonomy entry for `origin-rejected` and its
+test 4. A guard for a case no call site can reach is a claim the code cannot
+keep, and the second request per failure was real cost paid for it.
+
+The handshake itself stays, because P9 is a pinned decision and M9 owns
+settling it — not because it is confirmed. It is not.
 
 **`empty-cloze` did not reproduce, and has been removed.** Anki accepted a
 cloze note whose only field held no deletions — twice, returning a note id
@@ -123,16 +134,18 @@ satisfied by a note type every Anki ships.
 
 ### Still unverified
 
-* Whether the `no-cors` request separates a listening port from a dead one. It
-  was never exercised, because the CORS failure it exists to disambiguate did
-  not occur. Both causes still ship `confident: false` naming the other.
 * The handshake end to end — no dialog can be provoked while the add-on serves
-  the origin anyway.
+  the origin anyway. It is implemented and unverified, and M9 decides whether
+  it survives at all.
 * `permission-denied`, and the `ignoreOriginList` dead end behind it.
 * `api-key-required` against an add-on with `apiKey` set.
-* The AnkiConnect version the pass ran against was not recorded. It should be,
-  since "does it enforce the allowlist" is exactly the kind of thing that
-  varies by version, and the canonical repository has moved to SourceHut.
+* Whether any of this holds on a different AnkiConnect. The pass covers one
+  build, and "does it enforce the allowlist" is exactly the kind of thing that
+  varies — the canonical repository has moved to SourceHut and the GitHub tree
+  may lag.
+* Chrome. The reasoning behind the removal — a granted host permission exempts
+  the request from CORS — should hold for an MV3 service worker too, but it
+  was not tested there (P5 defers Chrome).
 
 ### Decisions pinned beyond the table below
 
@@ -142,6 +155,7 @@ satisfied by a note type every Anki ships.
 | 4.11 | Requests carry no headers, keeping every call a CORS-simple request | No preflight, so the add-on's OPTIONS handling is never in the path. |
 | 4.12 | `addNote` sends `allowDuplicate: true` | The only way 4.4's warning stays a warning, given `addNote(draft)` takes no override. |
 | 4.13 | `empty-cloze` is **not** in the taxonomy | Removed after the manual pass: Anki accepts a deletion-less cloze note, so nothing could ever raise it. M3's validation is the guard. |
+| 4.14 | `origin-rejected` is **not** in the taxonomy, and the probe reports no confidence | Removed after the manual pass: the add-on does not enforce its allowlist server-side, and a granted host permission exempts the extension from the browser's CORS check, so no call site reaches it. With it gone every remaining cause is determinate. |
 
 ## Goal
 

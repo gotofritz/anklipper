@@ -26,7 +26,6 @@ function clientWith(
 ) {
   const sent: Sent[] = [];
   const fetch = vi.fn(async (_url: string | URL, init: RequestInit = {}) => {
-    if (init.mode === "no-cors") return new Response(null, { status: 200 });
     const body = JSON.parse(String(init.body)) as Sent;
     sent.push(body);
     const answer = reply(body);
@@ -168,26 +167,15 @@ describe("connection causes", () => {
     });
   });
 
-  it("reads a CORS-shaped failure as origin-rejected, carrying the origin (4)", async () => {
+  it("reads a failed request as anki-not-running, whatever blocked it (4)", async () => {
     const { client } = clientWith(() => networkFailure());
 
     const probed = await client.probe();
 
     expect(probed).toMatchObject({
       kind: "unavailable",
-      cause: { kind: "origin-rejected", origin: ORIGIN },
-      confident: false,
+      cause: { kind: "anki-not-running" },
     });
-  });
-
-  it("offers the alternatives it could not rule out, so M9 can show two fixes", async () => {
-    const { client } = clientWith(() => networkFailure());
-
-    const probed = await client.probe();
-
-    expect(
-      probed.kind === "unavailable" && probed.alternatives.length,
-    ).toBeGreaterThan(0);
   });
 
   it("reports a reply that never arrives as timeout (6)", async () => {

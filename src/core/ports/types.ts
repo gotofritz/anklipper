@@ -23,8 +23,6 @@ export type AnkiErrorKind =
   | "anki-not-running"
   /** Something answered, but not AnkiConnect — the add-on is not installed. */
   | "addon-missing"
-  /** The extension's origin is absent from `webCorsOriginList`. */
-  | "origin-rejected"
   /** The loopback host permission has not been granted (2.7, Firefox MV3). */
   | "permission-missing"
   /**
@@ -51,9 +49,8 @@ export interface AnkiError {
   readonly kind: AnkiErrorKind;
   readonly message: string;
   /**
-   * On `origin-rejected`, the origin the request carried, read at runtime
-   * (P8) — so M9 can show the user the value they have to paste into
-   * `webCorsOriginList` rather than a guess at it.
+   * The origin the request carried, read at runtime (P8), on a cause the user
+   * has to see it for.
    */
   readonly origin?: string;
   /**
@@ -65,22 +62,17 @@ export interface AnkiError {
 
 /**
  * What the probe answers with (4.3): a cause, never a boolean. "Not available"
- * is several different problems with several different fixes, and the browser
- * cannot always tell them apart — a rejected origin and a dead port both
- * surface as a failed `fetch` — so the probe reports its best guess and says
- * how sure it is, leaving M9 free to offer two fixes instead of one confident
- * wrong one.
+ * is several different problems with several different fixes.
+ *
+ * The plan also asked for a confidence flag, because a rejected origin and a
+ * dead port would both surface as a failed `fetch` and the adapter would have
+ * to guess between them. M4's manual pass removed the ambiguity rather than
+ * resolving it — see the archived plan — so every cause the probe can report
+ * is now determinate, and a flag that is always `true` says nothing.
  */
 export type AnkiConnection =
   | { readonly kind: "connected"; readonly apiVersion: number }
-  | {
-      readonly kind: "unavailable";
-      readonly cause: AnkiError;
-      /** False when the evidence fits `alternatives` just as well. */
-      readonly confident: boolean;
-      /** The other causes the same evidence allows, likeliest first. */
-      readonly alternatives: readonly AnkiErrorKind[];
-    };
+  | { readonly kind: "unavailable"; readonly cause: AnkiError };
 
 /**
  * The result of the `requestPermission` handshake (4.7, P9).

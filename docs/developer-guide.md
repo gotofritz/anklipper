@@ -291,27 +291,21 @@ await anklipper.survey()
 `survey()` reads only — it never adds a note — and what it returns is safe to
 paste into an issue: it carries the origin, and never the API key.
 
-**Order matters.** Checks 5.1 to 5.3 are destroyed the moment the origin is
-allowlisted, so run them *before* step 4's config edit. If you have already
-done step 4, remove your origin from `webCorsOriginList` and restart Anki to
-get back to a first-run state.
+On the evidence so far the allowlist makes no difference to this extension, so
+step 4's config edit is not a prerequisite for any of these. Keep it out of
+`webCorsOriginList` anyway if you want to re-confirm that on your own Anki —
+that is the finding the whole section rests on.
 
-#### 5.1 A rejected origin is not a dead port
+#### 5.1 A dead port
 
-With Anki running, the add-on installed, and your origin **not** in
-`webCorsOriginList`, `await anklipper.probe()` should report
-`cause.kind === "origin-rejected"`, `confident: false`, and a `cause.origin`
-equal to the string from step 3.
+Quit Anki completely and `await anklipper.probe()`. Expect
+`cause.kind === "anki-not-running"`.
 
-Now quit Anki completely and probe again. That one should report
-`anki-not-running`.
-
-**If both report the same kind, that is the finding.** The adapter separates
-them with a `no-cors` request — which is supposed to resolve opaque when
-something is listening and reject when nothing is — and that technique has
-never been confirmed on Firefox. Both causes ship `confident: false` with the
-other listed as an alternative, so a wrong guess degrades to two suggested
-fixes rather than one wrong one, but the detection would need reworking.
+There is deliberately nothing to distinguish it from. The plan expected a
+rejected origin to look identical here and had the adapter separate the two
+with a `no-cors` probe; the manual pass found AnkiConnect serving a
+non-allowlisted origin, so `origin-rejected` was removed. See the archived M4
+plan.
 
 #### 5.2 The handshake, from a clean allowlist
 

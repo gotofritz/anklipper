@@ -4,7 +4,6 @@ import { isErr } from "@/core/result";
 
 import { createTransport } from "./transport";
 
-const ORIGIN = "moz-extension://11111111-2222-3333-4444-555555555555";
 const ENDPOINT = "http://127.0.0.1:8765";
 
 interface FetchCall {
@@ -27,7 +26,6 @@ function transportWith(
     calls,
     transport: createTransport({
       endpoint: ENDPOINT,
-      origin: ORIGIN,
       timeoutMs: options.timeoutMs ?? 5_000,
       fetch,
     }),
@@ -70,21 +68,7 @@ describe("createTransport", () => {
     expect(calls[0]?.init.headers).toBeUndefined();
   });
 
-  it("reads a failed fetch as origin-rejected when something is listening on the port", async () => {
-    const { transport } = transportWith(async ({ init }) => {
-      if (init.mode === "no-cors") return new Response(null, { status: 200 });
-      throw networkFailure();
-    });
-
-    const reply = await transport.post({ action: "version", version: 6 });
-
-    expect(isErr(reply) && reply.error).toMatchObject({
-      kind: "origin-rejected",
-      origin: ORIGIN,
-    });
-  });
-
-  it("reads a failed fetch as anki-not-running when nothing is listening at all", async () => {
+  it("reads a failed fetch as anki-not-running", async () => {
     const { transport } = transportWith(async () => {
       throw networkFailure();
     });
@@ -94,15 +78,18 @@ describe("createTransport", () => {
     expect(isErr(reply) && reply.error.kind).toBe("anki-not-running");
   });
 
-  it("says how sure it is, because the two look identical from the browser", async () => {
-    const { transport } = transportWith(async ({ init }) => {
-      if (init.mode === "no-cors") return new Response(null, { status: 200 });
+  it("makes one request, and no second one to disambiguate it", async () => {
+    // AnkiConnect does not enforce webCorsOriginList server-side, and a
+    // granted host permission exempts the extension from the browser's CORS
+    // check — so a failed fetch has nothing left to be confused with. See the
+    // archived M4 plan.
+    const { transport, calls } = transportWith(async () => {
       throw networkFailure();
     });
 
-    const reply = await transport.post({ action: "version", version: 6 });
+    await transport.post({ action: "version", version: 6 });
 
-    expect(isErr(reply) && reply.error.message).toMatch(/webCorsOriginList/i);
+    expect(calls).toHaveLength(1);
   });
 
   it("reads a readable non-2xx reply as addon-missing — something answered, but not AnkiConnect", async () => {
@@ -139,23 +126,5 @@ describe("createTransport", () => {
     const reply = await transport.post({ action: "version", version: 6 });
 
     expect(isErr(reply) && reply.error.kind).toBe("timeout");
-  });
-
-  it("does not mistake the timeout for a dead port", async () => {
-    const { transport, calls } = transportWith(
-      ({ init }) =>
-        new Promise((_resolve, reject) => {
-          init.signal?.addEventListener("abort", () => {
-            reject(
-              new DOMException("The operation was aborted.", "AbortError"),
-            );
-          });
-        }),
-      { timeoutMs: 5 },
-    );
-
-    await transport.post({ action: "version", version: 6 });
-
-    expect(calls.some((call) => call.init.mode === "no-cors")).toBe(false);
   });
 });

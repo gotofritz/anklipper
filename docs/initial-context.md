@@ -248,20 +248,18 @@ timeout, a malformed reply, or an API-level error. `AnkiError` carries the
 add-on's own words, plus `origin` on `origin-rejected` — so M9 can show the
 user the value to paste — and `needsManualFix` on a cause no retry will clear.
 
-A rejected origin and a dead port would be indistinguishable from the browser's
-side, both surfacing as a failed `fetch`, so the transport separates them with
-a `no-cors` request — which resolves opaque when something is listening and
-rejects when nothing is. Evidence rather than proof, so the probe reports
-`confident: false` and names the alternatives it could not rule out.
+The plan expected a fourth cause, `origin-rejected`, and expected it to be
+indistinguishable from a dead port — both surfacing as a failed `fetch`, to be
+separated by a `no-cors` probe. **It is not in the taxonomy**: M4's manual pass
+found the add-on serving a background-page request whose `Origin` was absent
+from `webCorsOriginList`. AnkiConnect does not enforce its allowlist
+server-side; it sets CORS response headers and leaves the enforcing to the
+browser, and a granted host permission exempts the extension from that.
+Without the permission the adapter answers `permission-missing` before any
+request goes out. There is no third path, so no call site could reach it.
 
-**In practice `origin-rejected` appears unreachable, and the `no-cors` path
-with it.** M4's manual pass found the add-on serving a background-page request
-whose `Origin` was absent from `webCorsOriginList`: it does not enforce the
-allowlist server-side, it sets CORS response headers and leaves the enforcing
-to the browser — and a granted host permission exempts the extension from
-that. Without the permission the adapter answers `permission-missing` before
-any request. There is no third path. Both are kept as guards, since one
-installation is not every version or fork, but neither is confirmed.
+With that gone every remaining cause is determinate, which is why the probe
+reports no confidence flag: one that is always `true` says nothing.
 
 ### Onboarding is a handshake — but it may not be needed
 
@@ -276,7 +274,8 @@ it.
 
 **P9 is reopened**, and M9 settles it: the extension reached AnkiConnect
 without being allowlisted at all, so the handshake may be answering a question
-this extension never has to ask. The adapter implements it either way.
+this extension never has to ask. The adapter still implements it, because P9 is
+pinned and M9 owns the decision — not because it is confirmed.
 
 `"*"` in `webCorsOriginList` is never suggested. Web pages are the one class
 CORS does constrain, so widening the list is precisely how a site the user

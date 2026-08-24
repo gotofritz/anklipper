@@ -67,12 +67,7 @@ export function createFakeAnkiClient(
     async probe(): Promise<AnkiConnection> {
       return failure === undefined
         ? { kind: "connected", apiVersion }
-        : {
-            kind: "unavailable",
-            cause: failure,
-            confident: true,
-            alternatives: [],
-          };
+        : { kind: "unavailable", cause: failure };
     },
 
     async requestPermission(): Promise<AnkiHandshake> {

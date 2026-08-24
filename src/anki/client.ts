@@ -25,7 +25,7 @@ import {
 } from "./protocol";
 import type { Transport } from "./transport";
 import { createTransport } from "./transport";
-import type { AnkiAction, AnkiFailure, TemplateMap } from "./types";
+import type { AnkiAction, TemplateMap } from "./types";
 
 /**
  * The `AnkiClient` port (P3), implemented against AnkiConnect.
@@ -89,7 +89,6 @@ const PERMISSION_MISSING: AnkiError = {
 export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
   const transport: Transport = createTransport({
     endpoint: config.endpoint ?? ANKI_CONNECT_URL,
-    origin: config.origin,
     timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     fetch: config.fetch ?? globalThis.fetch.bind(globalThis),
   });
@@ -107,7 +106,7 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
     action: AnkiAction,
     params: Readonly<Record<string, unknown>> | undefined,
     read: (result: unknown) => Result<T, AnkiError>,
-  ): Promise<Result<T, AnkiFailure | AnkiError>> {
+  ): Promise<Result<T, AnkiError>> {
     if (!(await hasHostPermission())) return err(PERMISSION_MISSING);
 
     const posted = await transport.post(
@@ -129,32 +128,10 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
     return read(envelope.value);
   }
 
-  /**
-   * The confidence the transport attaches is the probe's business alone, so
-   * everything else is narrowed back to the port's own `AnkiError`.
-   */
-  function toPortError(error: AnkiFailure | AnkiError): AnkiError {
-    const { kind, message, origin, needsManualFix } = error;
-
-    return {
-      kind,
-      message,
-      ...(origin === undefined ? {} : { origin }),
-      ...(needsManualFix === undefined ? {} : { needsManualFix }),
-    };
-  }
-
-  async function port<T>(
-    result: Promise<Result<T, AnkiFailure | AnkiError>>,
-  ): Promise<Result<T, AnkiError>> {
-    const settled = await result;
-    return settled.ok ? settled : err(toPortError(settled.error));
-  }
-
   /** Fields and templates for one note type, so the flavour is read, not guessed (4.6). */
   async function describeNoteType(
     name: string,
-  ): Promise<Result<NoteType, AnkiFailure | AnkiError>> {
+  ): Promise<Result<NoteType, AnkiError>> {
     const fields = await call(
       "modelFieldNames",
       { modelName: name },
@@ -180,19 +157,10 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
   return {
     async probe(): Promise<AnkiConnection> {
       const version = await call("version", undefined, readNumber);
-      if (version.ok) return { kind: "connected", apiVersion: version.value };
 
-      // A shape failure or an API error came from a reply that was read, so it
-      // is as certain as this layer gets; only the transport's guesses carry
-      // the flags, and only those two causes can be mistaken for each other.
-      const failed: Partial<AnkiFailure> = version.error;
-
-      return {
-        kind: "unavailable",
-        cause: toPortError(version.error),
-        confident: failed.confident ?? true,
-        alternatives: failed.alternatives ?? [],
-      };
+      return version.ok
+        ? { kind: "connected", apiVersion: version.value }
+        : { kind: "unavailable", cause: version.error };
     },
 
     async requestPermission(): Promise<AnkiHandshake> {
@@ -229,17 +197,17 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
     },
 
     async deckNames(): Promise<Result<readonly string[], AnkiError>> {
-      return port(call("deckNames", undefined, readStringArray));
+      return call("deckNames", undefined, readStringArray);
     },
 
     async noteTypes(): Promise<Result<readonly NoteType[], AnkiError>> {
       const names = await call("modelNames", undefined, readStringArray);
-      if (!names.ok) return err(toPortError(names.error));
+      if (!names.ok) return names;
 
       const noteTypes: NoteType[] = [];
       for (const name of names.value) {
         const described = await describeNoteType(name);
-        if (!described.ok) return err(toPortError(described.error));
+        if (!described.ok) return described;
         noteTypes.push(described.value);
       }
 
@@ -247,30 +215,28 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
     },
 
     async canAddNote(draft: CardDraft): Promise<Result<boolean, AnkiError>> {
-      return port(
-        call(
-          "canAddNotes",
-          { notes: [toAnkiNote(draft)] },
-          (result): Result<boolean, AnkiError> => {
-            const read = readBooleanArray(result);
-            if (!read.ok) return read;
+      return call(
+        "canAddNotes",
+        { notes: [toAnkiNote(draft)] },
+        (result): Result<boolean, AnkiError> => {
+          const read = readBooleanArray(result);
+          if (!read.ok) return read;
 
-            const [answer] = read.value;
-            if (answer === undefined) {
-              return err({
-                kind: "malformed-response",
-                message: "AnkiConnect answered about no note at all",
-              });
-            }
+          const [answer] = read.value;
+          if (answer === undefined) {
+            return err({
+              kind: "malformed-response",
+              message: "AnkiConnect answered about no note at all",
+            });
+          }
 
-            return ok(answer);
-          },
-        ),
+          return ok(answer);
+        },
       );
     },
 
     async addNote(draft: CardDraft): Promise<Result<NoteId, AnkiError>> {
-      return port(call("addNote", { note: toAnkiNote(draft) }, readNoteId));
+      return call("addNote", { note: toAnkiNote(draft) }, readNoteId);
     },
   };
 }
