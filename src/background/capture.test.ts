@@ -292,3 +292,77 @@ describe("describeCapture", () => {
     expect(JSON.stringify(describeCapture(result))).not.toContain("Paris");
   });
 });
+
+// Firefox's sidebar is already open for every capture after the first, and
+// what `sidebarAction.open()` does then is not this extension's to rely on.
+// The capture must not be hostage to that promise.
+describe("a sidebar that does not finish opening", () => {
+  it("still stores the draft", async () => {
+    const withDeps = deps({
+      sidebar: { open: () => new Promise(() => {}) },
+      sidebarTimeoutMs: 1,
+    });
+
+    const result = await captureFromGesture({ tabId: 7 }, withDeps);
+
+    expect(result.ok && result.value.draft.fields.Front).toBe(
+      "Paris is the capital of France.",
+    );
+    const stored = await withDeps.drafts.load();
+    expect(stored.ok && stored.value).toBeDefined();
+  });
+
+  it("reports it as timed out rather than hanging", async () => {
+    const result = await captureFromGesture(
+      { tabId: 7 },
+      deps({
+        sidebar: { open: () => new Promise(() => {}) },
+        sidebarTimeoutMs: 1,
+      }),
+    );
+
+    expect(result.ok && result.value.sidebar.ok).toBe(false);
+    expect(
+      result.ok && !result.value.sidebar.ok && result.value.sidebar.error.kind,
+    ).toBe("open-timed-out");
+  });
+
+  it("reads the page without waiting for the sidebar at all", async () => {
+    let opened = false;
+    const transport = createFakeRuntimeMessaging();
+    transport.connectTab(7, async () => {
+      // The page is asked while the sidebar is still opening: the two are
+      // independent, and only the gesture ordering matters.
+      expect(opened).toBe(false);
+      return ok(CAPTURE);
+    });
+
+    await captureFromGesture(
+      { tabId: 7 },
+      deps({
+        messenger: createMessenger(transport),
+        sidebar: {
+          open: () =>
+            new Promise((resolve) =>
+              setTimeout(() => {
+                opened = true;
+                resolve(ok(undefined));
+              }, 5),
+            ),
+        },
+      }),
+    );
+  });
+
+  it("does not wait for the sidebar before rejecting a gesture with no tab", async () => {
+    const result = await captureFromGesture(
+      {},
+      deps({
+        sidebar: { open: () => new Promise(() => {}) },
+        sidebarTimeoutMs: 1,
+      }),
+    );
+
+    expect(result.ok === false && result.error.kind).toBe("no-tab");
+  });
+});

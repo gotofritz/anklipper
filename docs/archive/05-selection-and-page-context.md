@@ -52,6 +52,17 @@ nothing was stored and nothing was said. `describeCapture` reduces a result
 to kinds and our own messages, carrying no page content, and the background
 hands it to an optional reporter that development builds log.
 
+**The capture no longer waits for the sidebar.** The third thing the manual
+pass found, and the one that made the other two look unfixed: `finish` awaited
+`sidebar.open()` before reading the page, so every capture after the first —
+the ones where Firefox's sidebar is already open — hung on a promise this
+extension does not own. Nothing was stored and nothing was reported. The
+gesture ordering the plan's risk note demands is *open first*, not *wait
+first*: the sidebar call still happens inside the gesture's task, the capture
+then runs independently, and the sidebar's answer is collected at the end
+under a one-second timeout (`open-timed-out`). The regression test drove the
+old code into a 15-second stall, which is what the bug was.
+
 **Not done, and why.** The "done when" clause about a real browser is the one
 item left open: the automated suite covers extraction against jsdom fixtures
 and the gesture against fakes, and the manual pass is written up in the

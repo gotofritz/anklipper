@@ -243,12 +243,19 @@ shown in the sidebar. Where the menu event carried text, a degraded draft is
 still made: a degraded card beats no card, provided the degradation is
 visible.
 
-**The sidebar is opened first, inside the gesture's own task.** Both browsers
-require it, so `captureFromGesture` is not `async` and reaches
-`sidebar.open()` before it awaits anything. The draft is then stored, and the
-sidebar reads it back out with `get-draft` — the two finish in no fixed
-order, and the background is unloaded when idle, so nothing is held in memory
-between them.
+**The sidebar is opened first, inside the gesture's own task — and then not
+waited for.** Both browsers require the call inside the gesture, so
+`captureFromGesture` is not `async` and reaches `sidebar.open()` before it
+awaits anything. Nothing else waits on that promise: Firefox's sidebar is
+already open for every capture after the first, and what `sidebarAction.open()`
+does then is not this extension's to rely on. The capture reads the page and
+stores the draft first, and only then gives the sidebar a bounded moment to
+answer, timing out into `open-timed-out`. A sidebar the user can open
+themselves is a far smaller problem than a capture that produced nothing.
+
+The draft is stored, and the sidebar reads it back out with `get-draft` — the
+two finish in no fixed order, and the background is unloaded when idle, so
+nothing is held in memory between them.
 
 **The sidebar re-reads on every capture, not only on mount.** Firefox's
 sidebar persists per window, so after the first card it is already open when

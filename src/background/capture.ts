@@ -46,6 +46,14 @@ export const FALLBACK_DEFAULTS: GenerationDefaults = {
   noteType: FALLBACK_NOTE_TYPE,
 };
 
+/**
+ * How long the sidebar gets to answer before the capture stops waiting on it.
+ * Nothing depends on the answer except the report: the draft is stored either
+ * way, and a sidebar the user can open themselves is a far smaller problem
+ * than a capture that produced nothing.
+ */
+export const SIDEBAR_OPEN_TIMEOUT_MS = 1_000;
+
 export interface CaptureDeps {
   readonly messenger: Messenger;
   readonly scripting: ScriptingPort;
@@ -53,6 +61,8 @@ export interface CaptureDeps {
   readonly drafts: DraftStore;
   readonly defaults?: GenerationDefaults;
   readonly now?: () => Date;
+  /** Injected so the timeout is testable without waiting for it. */
+  readonly sidebarTimeoutMs?: number;
 }
 
 export type CaptureFailureKind =
@@ -142,13 +152,49 @@ export function captureFromGesture(
   return finish(trigger, deps, opening);
 }
 
+/**
+ * Settle, or give up and say so. A promise that never settles would otherwise
+ * take the whole capture down with it.
+ */
+function withTimeout(
+  opening: Promise<Result<void, SidebarError>>,
+  ms: number,
+): Promise<Result<void, SidebarError>> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(
+      () =>
+        resolve(
+          err({
+            kind: "open-timed-out",
+            message: `the sidebar did not answer within ${ms}ms`,
+          }),
+        ),
+      ms,
+    );
+
+    void opening.then(
+      (result) => {
+        clearTimeout(timer);
+        resolve(result);
+      },
+      (cause: unknown) => {
+        clearTimeout(timer);
+        resolve(
+          err({
+            kind: "open-failed",
+            message: cause instanceof Error ? cause.message : String(cause),
+          }),
+        );
+      },
+    );
+  });
+}
+
 async function finish(
   trigger: CaptureTrigger,
   deps: CaptureDeps,
   opening: Promise<Result<void, SidebarError>>,
 ): Promise<Result<CaptureOutcome, CaptureFailure>> {
-  const sidebar = await opening;
-
   if (trigger.tabId === undefined) {
     return err({
       kind: "no-tab",
@@ -193,6 +239,13 @@ async function finish(
       message: `the draft could not be stored: ${saved.error.message}`,
     });
   }
+
+  // Only now, with the draft safely stored, is the sidebar's answer worth
+  // waiting for — and even then, not indefinitely.
+  const sidebar = await withTimeout(
+    opening,
+    deps.sidebarTimeoutMs ?? SIDEBAR_OPEN_TIMEOUT_MS,
+  );
 
   return ok({ draft, warnings: filled.warnings, sidebar });
 }
