@@ -9,6 +9,13 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [0.5.0](https://github.com/gotofritz/anklipper/compare/v0.4.0...v0.5.0) (2026-08-24)
+
+
+### Features
+
+* **m5:** selection and page-context extraction ([#15](https://github.com/gotofritz/anklipper/issues/15)) ([83b905a](https://github.com/gotofritz/anklipper/commit/83b905aa52c94204668f279db7d0f2797c68cfa3))
+
 ## [0.4.0](https://github.com/gotofritz/anklipper/compare/v0.3.0...v0.4.0) (2026-08-24)
 
 
