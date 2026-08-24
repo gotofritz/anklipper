@@ -30,12 +30,17 @@ export default defineBackground(() => {
     // and our own messages — never the draft, the selection, or the page —
     // so this stays inside the privacy rule; the DEV guard keeps it out of a
     // release regardless.
+    //
+    // Every capture, not only the failures: a clean capture logging nothing
+    // is indistinguishable from a build that never ran, which is exactly the
+    // ambiguity this exists to remove.
     ...(import.meta.env.DEV
       ? {
           report: (report: CaptureReport) => {
-            if (report.outcome === "failed" || report.warnings.length > 0) {
-              console.warn("anklipper: capture", report);
-            }
+            console[report.outcome === "failed" ? "warn" : "info"](
+              "anklipper: capture",
+              report,
+            );
           },
         }
       : {}),
