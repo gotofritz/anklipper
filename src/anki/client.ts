@@ -11,7 +11,7 @@ import type { Result } from "@/core/result";
 import { err, ok } from "@/core/result";
 import { ANKI_CONNECT_URL } from "@/manifest/manifest";
 
-import { classifyAddNoteError, classifyApiError } from "./errors";
+import { classifyApiError } from "./errors";
 import { toAnkiNote, toNoteType } from "./mapping";
 import {
   buildRequest,
@@ -107,7 +107,6 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
     action: AnkiAction,
     params: Readonly<Record<string, unknown>> | undefined,
     read: (result: unknown) => Result<T, AnkiError>,
-    classify: (message: string) => AnkiError = classifyApiError,
   ): Promise<Result<T, AnkiFailure | AnkiError>> {
     if (!(await hasHostPermission())) return err(PERMISSION_MISSING);
 
@@ -117,12 +116,12 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
     if (!posted.ok) return posted;
 
     const envelope = readEnvelope(posted.value);
-    // `readEnvelope` reports the add-on's error string as `api-error`; the
-    // caller knows whether it is really something narrower.
+    // `readEnvelope` reports every add-on error string as `api-error`; this
+    // is where it is narrowed to the kind the string actually names.
     if (!envelope.ok) {
       return err(
         envelope.error.kind === "api-error"
-          ? classify(envelope.error.message)
+          ? classifyApiError(envelope.error.message)
           : envelope.error,
       );
     }
@@ -271,11 +270,7 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
     },
 
     async addNote(draft: CardDraft): Promise<Result<NoteId, AnkiError>> {
-      return port(
-        call("addNote", { note: toAnkiNote(draft) }, readNoteId, (message) =>
-          classifyAddNoteError(message, draft),
-        ),
-      );
+      return port(call("addNote", { note: toAnkiNote(draft) }, readNoteId));
     },
   };
 }

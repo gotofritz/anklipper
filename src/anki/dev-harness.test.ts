@@ -156,22 +156,12 @@ describe("sample drafts", () => {
     expect(parseCloze(draft.fields.Text ?? "")).toHaveLength(1);
   });
 
-  it("builds a cloze draft with no deletions at all, for the empty-cloze check", () => {
-    const { harness } = harnessWith();
-
-    const draft = harness.drafts.emptyCloze("Geography", CLOZE);
-
-    expect(parseCloze(draft.fields.Text ?? "")).toHaveLength(0);
-    expect(draft.fields.Text).not.toBe("");
-  });
-
   it("tags every sample, so a test run is findable in Anki afterwards", () => {
     const { harness } = harnessWith();
 
     for (const draft of [
       harness.drafts.basic("Default", BASIC),
       harness.drafts.cloze("Default", CLOZE),
-      harness.drafts.emptyCloze("Default", CLOZE),
     ]) {
       expect(draft.tags).toContain("anklipper-manual-check");
     }

@@ -137,17 +137,6 @@ describe("addNote", () => {
     });
   });
 
-  it("surfaces an empty-cloze rejection as its own cause, not api-error (12)", async () => {
-    const { client } = clientWith(() => ({
-      result: null,
-      error: "cannot create note because it is empty",
-    }));
-
-    const added = await client.addNote(clozeDraft("no deletions in here"));
-
-    expect(isErr(added) && added.error.kind).toBe("empty-cloze");
-  });
-
   it("rejects a 200 of the wrong shape as malformed-response rather than casting it (5)", async () => {
     const { client } = clientWith(() => ok("not a note id"));
 

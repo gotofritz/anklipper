@@ -39,15 +39,21 @@ export function createTransport(config: TransportConfig): Transport {
   /**
    * Is *anything* listening on the port?
    *
-   * A rejected origin and a dead port are the same failed `fetch` from the
-   * browser's side: for a non-allowlisted origin the add-on answers with
-   * `Access-Control-Allow-Origin: http://localhost`, so the extension cannot
-   * read even the 403. A `no-cors` request sidesteps that — it resolves to an
-   * opaque response when something answers and rejects when nothing is there,
-   * which separates the two without needing a readable body.
+   * A rejected origin and a dead port would be the same failed `fetch` from
+   * the browser's side, so a `no-cors` request separates them: it resolves to
+   * an opaque response when something answers and rejects when nothing is
+   * there, without needing a readable body. Opaque means opaque, so this is
+   * evidence rather than proof, and the caller says as much in the `confident`
+   * flag it passes on.
    *
-   * Opaque means opaque, so this is evidence rather than proof, and the caller
-   * says as much in the `confident` flag it passes on.
+   * M4's manual pass never reached this path. The add-on served a
+   * background-page request whose `Origin` was absent from
+   * `webCorsOriginList`, so it does not enforce the allowlist server-side, and
+   * a granted host permission exempts the extension from the browser's
+   * enforcement. Without that permission the client answers
+   * `permission-missing` before anything is sent. Kept as a guard — one
+   * installation is not every version or fork — but unconfirmed. See the
+   * archived M4 plan.
    */
   async function somethingIsListening(): Promise<boolean> {
     try {

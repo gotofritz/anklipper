@@ -72,8 +72,6 @@ export interface Survey {
 export interface SampleDrafts {
   basic(deck: string, noteType: NoteType): CardDraft;
   cloze(deck: string, noteType: NoteType): CardDraft;
-  /** No deletions at all — what `empty-cloze` is supposed to catch. */
-  emptyCloze(deck: string, noteType: NoteType): CardDraft;
 }
 
 export interface DevHarness {
@@ -117,7 +115,6 @@ export function createDevHarness(deps: DevHarnessDeps): DevHarness {
     drafts: {
       basic: (deck, noteType) => sample(deck, noteType, SAMPLE_TEXT),
       cloze: (deck, noteType) => sample(deck, noteType, SAMPLE_CLOZE),
-      emptyCloze: (deck, noteType) => sample(deck, noteType, SAMPLE_TEXT),
     },
 
     diagnostics: () => describeAnkiConnection(config),

@@ -42,8 +42,6 @@ export type AnkiErrorKind =
   | "unknown-deck"
   | "unknown-note-type"
   | "unknown-field"
-  /** A cloze note reached Anki with no deletions — M3's validation disagrees. */
-  | "empty-cloze"
   /** Anki accepted the connection and never answered. */
   | "timeout"
   /** An API-level error with no more specific kind. */
