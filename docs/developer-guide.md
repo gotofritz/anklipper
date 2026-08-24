@@ -345,27 +345,27 @@ something with no "cloze" in it. It must still appear in `clozeNoteTypes` —
 that is the check that the flavour is read from the templates rather than
 guessed from the name, and the one the name heuristic fails.
 
-#### 5.5 Adding a note, and the empty-cloze refusal
+#### 5.5 Adding a note
 
 These write to your collection. Every sample is tagged
 `anklipper-manual-check`, so the run is one search away in Anki's browser
 afterwards.
 
 ```js
-const { noteTypes } = await anklipper.survey()
-const basic = /* the NoteType you want, from client.noteTypes() */
+const nts = await anklipper.client.noteTypes()
+const basic = nts.value.find((n) => n.name === "Basic")
+const cloze = nts.value.find((n) => n.name === "Cloze")
+
 await anklipper.client.addNote(anklipper.drafts.basic("Default", basic))
+await anklipper.client.addNote(anklipper.drafts.cloze("Default", cloze))
 ```
 
-Then the two cloze paths, against a cloze note type:
+Both should return `{ ok: true, value: <note id> }`. Open the cloze one in
+Anki and confirm its `{{c1::…}}` arrived intact rather than escaped.
 
-- `drafts.cloze(...)` should add, with its `{{c1::…}}` intact in Anki.
-- `drafts.emptyCloze(...)` should be refused as `empty-cloze`.
-
-For the refusal, **record the exact error string Anki returned** and compare
-it with the patterns in `src/anki/errors.ts`. The adapter also settles this
-case by inspecting the draft, so it should be caught either way — but the
-pattern is worth keeping accurate.
+Note that Anki accepts a cloze note with **no** deletions rather than
+refusing it, so nothing downstream catches one. `validateDraft`'s
+`cloze-no-deletions` is the only guard there is.
 
 #### 5.6 An API key, if you use one
 

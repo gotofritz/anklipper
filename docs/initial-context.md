@@ -248,16 +248,22 @@ timeout, a malformed reply, or an API-level error. `AnkiError` carries the
 add-on's own words, plus `origin` on `origin-rejected` — so M9 can show the
 user the value to paste — and `needsManualFix` on a cause no retry will clear.
 
-A rejected origin and a dead port are indistinguishable from the browser's
-side: the add-on answers a non-allowlisted origin with
-`Access-Control-Allow-Origin: http://localhost`, so the extension cannot read
-even the 403 it sends, and both surface as a failed `fetch`. The transport
-separates them with a `no-cors` request, which resolves opaque when something
-is listening and rejects when nothing is — evidence, not proof, so the probe
-reports `confident: false` and names the alternatives it could not rule out.
-**This technique has not yet been confirmed on a real Firefox profile.**
+A rejected origin and a dead port would be indistinguishable from the browser's
+side, both surfacing as a failed `fetch`, so the transport separates them with
+a `no-cors` request — which resolves opaque when something is listening and
+rejects when nothing is. Evidence rather than proof, so the probe reports
+`confident: false` and names the alternatives it could not rule out.
 
-### Onboarding is a handshake, not a config edit
+**In practice `origin-rejected` appears unreachable, and the `no-cors` path
+with it.** M4's manual pass found the add-on serving a background-page request
+whose `Origin` was absent from `webCorsOriginList`: it does not enforce the
+allowlist server-side, it sets CORS response headers and leaves the enforcing
+to the browser — and a granted host permission exempts the extension from
+that. Without the permission the adapter answers `permission-missing` before
+any request. There is no third path. Both are kept as guards, since one
+installation is not every version or fork, but neither is confirmed.
+
+### Onboarding is a handshake — but it may not be needed
 
 The add-on's `requestPermission` action reaches it even from a non-allowlisted
 origin and prompts inside Anki; on approval it appends the origin and saves the
@@ -266,9 +272,18 @@ treats it as fire-and-then-re-probe: `asked` means the dialog is up and only a
 following probe establishes what the user did. A readable refusal is
 `permission-denied` with `needsManualFix`, because an origin in the add-on's
 `ignoreOriginList` never sees the dialog again and only a config edit clears
-it. Hand-editing `config.json` stays the documented fallback. `"*"` in
-`webCorsOriginList` is never suggested: it is honoured, and would let any site
-the user visits drive their collection.
+it.
+
+**P9 is reopened**, and M9 settles it: the extension reached AnkiConnect
+without being allowlisted at all, so the handshake may be answering a question
+this extension never has to ask. The adapter implements it either way.
+
+`"*"` in `webCorsOriginList` is never suggested. Web pages are the one class
+CORS does constrain, so widening the list is precisely how a site the user
+visits would get to drive their collection. Nothing about the allowlist gates
+a client that is not subject to CORS — curl, a native app, or an extension
+holding the host permission — so the extension must not describe it as
+protection against itself.
 
 ### What the adapter does and does not decide
 

@@ -64,32 +64,75 @@ below:
   the cause is `empty-cloze` — which is the case 4.3 exists for, since the two
   need different fixes.
 
-### Not done, and why
+### The manual pass, and what it changed
 
-The manual passes under *Done when* need a running Anki and a real Firefox
-profile, and neither exists in the environment this was built in. Every one of
-them is still outstanding, and each is a case where the code encodes a
-reasonable reading of the add-on's behaviour that has not been confirmed
-against the installed version.
+Run against a real Anki on a real Firefox profile after the adapter was
+written, using `src/anki/dev-harness.ts`. Three of the plan's assumptions did
+not survive it.
 
-`src/anki/dev-harness.ts` exists to run them: a development-only harness the
-background entrypoint puts on the console's global, so the adapter can be
-driven from a real extension origin. The ordered procedure is under *Checking
-it in Firefox* in the developer guide. What is still unconfirmed:
+**`origin-rejected` did not reproduce, and looks unreachable.** The plan calls
+it "the single most likely first-run state". It is not a state this extension
+reaches. With the loopback host permission granted, a background-page request
+carrying `Origin: moz-extension://<uuid>` — an origin absent from
+`webCorsOriginList` — was served normally: `version` answered 6, `addNote`
+added. So the add-on does not enforce the allowlist server-side; it sets CORS
+response headers and leaves the enforcing to the browser, and a granted host
+permission exempts the extension from that. Without the permission the adapter
+returns `permission-missing` before any request goes out. There is no third
+path, so no call site reaches `origin-rejected`.
 
-* the happy path and the `origin-rejected` path against a real Anki;
-* that the origin the adapter reports is the one AnkiConnect accepts when
-  pasted into `webCorsOriginList`;
-* that the `no-cors` request really does resolve opaque when something is
-  listening and reject when nothing is — the technique the plan flags for
-  verification, and the whole basis for telling `anki-not-running` from
-  `origin-rejected`. Both causes are reported with `confident: false` and the
-  other as an alternative, so a wrong guess degrades to two suggested fixes
-  rather than one wrong one;
-* the handshake end to end from a clean `webCorsOriginList`;
-* cloze detection against a custom cloze-flavoured note type;
-* the exact wording Anki uses to refuse an empty cloze note, which
-  `classifyAddNoteError` matches by pattern and by inspecting the draft.
+Two things follow. `webCorsOriginList` constrains web pages and not this
+extension — which is also the sharpest argument against ever suggesting `"*"`,
+since web pages are the one class it does constrain. And **P9 is reopened** in
+the plan index: the `requestPermission` handshake may be solving a problem the
+extension does not have. The handshake, `origin-rejected`, and the `no-cors`
+discrimination are all kept — they cost little, and the add-on's behaviour
+across versions and forks is wider than one installation — but none of them is
+confirmed, and the plan's reasoning for them is now known to be wrong on this
+version.
+
+**`empty-cloze` did not reproduce, and has been removed.** Anki accepted a
+cloze note whose only field held no deletions — twice, returning a note id
+rather than an error. The cause was designed as a backstop for M3's validation
+and Anki disagreeing; they do not disagree, because Anki has no opinion.
+`classifyAddNoteError` only ran on an error, so the whole path was unreachable
+and test 12 passed against a refusal that does not happen.
+
+So the taxonomy no longer carries `empty-cloze`, `classifyAddNoteError` and the
+harness's `emptyCloze` sample are gone, and `addNote` classifies its errors
+like every other operation. A branch no call site can reach is not a safety
+net; it is a claim the code makes and cannot keep. This is a departure from the
+plan's error taxonomy and from its test 12, decided on the evidence.
+
+The consequence belongs to M6: `validateDraft`'s `cloze-no-deletions` is the
+**only** thing standing between a user and a cloze note that generates
+nothing, so the editor has to enforce it rather than treat it as advisory.
+
+**What did hold.** The probe reports `connected` with the API version read
+from the add-on (4.9). `deckNames`, `modelNames`, `modelFieldNames` and
+`modelTemplates` all validated with no failures. `anki-not-running` is
+reported correctly with Anki shut down. `addNote` returned real note ids for a
+basic and a cloze draft.
+
+4.6 held in the strongest available form, and by luck rather than design: the
+survey reported `["Cloze", "Image Occlusion"]` as cloze-flavoured. Anki's
+built-in **Image Occlusion** is cloze-based and its name matches nothing in
+M3's `/cloze/i` heuristic, so the template read caught a note type the
+fallback would have missed — the custom-note-type check the plan asks for,
+satisfied by a note type every Anki ships.
+
+### Still unverified
+
+* Whether the `no-cors` request separates a listening port from a dead one. It
+  was never exercised, because the CORS failure it exists to disambiguate did
+  not occur. Both causes still ship `confident: false` naming the other.
+* The handshake end to end — no dialog can be provoked while the add-on serves
+  the origin anyway.
+* `permission-denied`, and the `ignoreOriginList` dead end behind it.
+* `api-key-required` against an add-on with `apiKey` set.
+* The AnkiConnect version the pass ran against was not recorded. It should be,
+  since "does it enforce the allowlist" is exactly the kind of thing that
+  varies by version, and the canonical repository has moved to SourceHut.
 
 ### Decisions pinned beyond the table below
 
@@ -98,6 +141,7 @@ it in Firefox* in the developer guide. What is still unconfirmed:
 | 4.10 | The adapter sends the note type's own fields and injects nothing | Source stays provenance on the draft; a note type with a `Source` field is filled by the editor, not here. |
 | 4.11 | Requests carry no headers, keeping every call a CORS-simple request | No preflight, so the add-on's OPTIONS handling is never in the path. |
 | 4.12 | `addNote` sends `allowDuplicate: true` | The only way 4.4's warning stays a warning, given `addNote(draft)` takes no override. |
+| 4.13 | `empty-cloze` is **not** in the taxonomy | Removed after the manual pass: Anki accepts a deletion-less cloze note, so nothing could ever raise it. M3's validation is the guard. |
 
 ## Goal
 
