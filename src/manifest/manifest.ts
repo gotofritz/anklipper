@@ -45,6 +45,18 @@ export const GECKO_MIN_VERSION = "128.0";
 export const CHROME_EXTENSION_KEY =
   "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuwxNZw0j3Ymq0KvmVkVmkKRwZltwFtrDhCvaTlVS5TRxTcSRY4cnIc5XhcVT88Sc7Ro7rvK8LXymu3l7z0y7bVocgiHUCKKr7GIw6sCRZmZOUBSRvREscfWIbjQOTTFVUHwNWhsxuy1reuDGPRqZi/CfnvpbbcbHTbVi9oRzFl34/p9g98hcrZjneIhhyDh9/OlGfkJddiPQLk8JMtezTsRotNs8sFmdJm/2LKv+hbO/rcRqeWaH0J9SLW55Q79aAfaQ0N6ykxzLfddpsxBleLbESU9vk5rAt6nDaL9TP5NrTWtMouhfeWcOPxVJeesZHb2XJL/ycwksckzcRRMWYwIDAQAB";
 
+/**
+ * The shortcut's name. The background listens for exactly this, so the two
+ * live in one place; `Alt+Shift+A` is free on both browsers, where the
+ * `Ctrl+Shift+` range is largely taken by their own developer tools.
+ */
+export const CAPTURE_COMMAND = "create-anki-card";
+
+export interface ManifestCommand {
+  readonly suggested_key?: { readonly default: string };
+  readonly description: string;
+}
+
 export interface GeckoSettings {
   readonly gecko: {
     readonly id: string;
@@ -56,6 +68,8 @@ export interface GeckoSettings {
 export interface ManifestExtras {
   readonly permissions: string[];
   readonly host_permissions: string[];
+  /** A manifest key rather than a permission, so it widens nothing. */
+  readonly commands: Readonly<Record<string, ManifestCommand>>;
   readonly browser_specific_settings?: GeckoSettings;
   readonly key?: string;
 }
@@ -64,6 +78,12 @@ export function manifestExtras(target: string): ManifestExtras {
   return {
     permissions: [...MVP_PERMISSIONS],
     host_permissions: [ANKI_CONNECT_HOST_PERMISSION],
+    commands: {
+      [CAPTURE_COMMAND]: {
+        suggested_key: { default: "Alt+Shift+A" },
+        description: "Create an Anki card from the selected text",
+      },
+    },
     ...(target === "firefox"
       ? {
           browser_specific_settings: {

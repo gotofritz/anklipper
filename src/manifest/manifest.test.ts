@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ANKI_CONNECT_HOST_PERMISSION,
+  CAPTURE_COMMAND,
   CHROME_EXTENSION_KEY,
   GECKO_ID,
   manifestExtras,
@@ -82,5 +83,23 @@ describe("manifest identity", () => {
       manifestExtras("firefox").browser_specific_settings?.gecko
         .data_collection_permissions,
     ).toEqual({ required: ["none"] });
+  });
+});
+
+// M5's keyboard shortcut. `commands` is a manifest key, not a permission, so
+// it adds nothing to the ceiling — but the name has to match the one the
+// background listens for, and only a test keeps the two in step.
+describe("manifest commands", () => {
+  it.each(["firefox", "chrome"])("declares one shortcut on %s", (target) => {
+    expect(Object.keys(manifestExtras(target).commands ?? {})).toEqual([
+      CAPTURE_COMMAND,
+    ]);
+  });
+
+  it("suggests a shortcut neither browser has already taken", () => {
+    const command = manifestExtras("firefox").commands?.[CAPTURE_COMMAND];
+
+    expect(command?.suggested_key?.default).toBe("Alt+Shift+A");
+    expect(command?.description).toContain("Anki card");
   });
 });

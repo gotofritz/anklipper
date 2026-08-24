@@ -1,5 +1,51 @@
 # M5 — Selection and page context
 
+## As built
+
+Shipped as planned: 5.1–5.4 all hold, the context menu and the `Alt+Shift+A`
+shortcut share one path, and extraction runs only on the gesture. What differs
+from the text below, and why:
+
+**The HTML fragment went to `source.html`, not to `GenerationMetadata`.** 5.2
+says "kept in generation metadata", which reads as `draft.generation` — but
+that field names the generator and its version, and page markup is not
+provenance of the generator. `CardSource` already holds the capture verbatim
+(3.6), so the fragment joined it there, alongside a new `source.heading`.
+`draft.generation.warnings` does carry the capture's blind spots, because
+those *are* something generation knows and the editor has to show.
+
+**Two modules were added that the plan does not name.**
+`src/platform/draft-store.ts` implements M3's `DraftStore` over `StoragePort`,
+because the gesture and the sidebar finish in no fixed order and the
+background is unloaded when idle — there is nowhere else for the draft to
+live between them. The plan assigned that adapter to M7; M7 inherits a working
+one. `src/platform/commands.ts` wraps `browser.commands`, which M2 had not
+needed.
+
+**The sidebar pulls rather than being pushed to.** The plan's handoff ends
+"draft → sidebar". Delivering into a live sidebar is 7.4's problem, so M5
+stops at storing the draft and answering `get-draft`. The panel renders the
+captured text, its source, and any warnings — that is what makes the whole
+path visible, not an editor, which is M6's.
+
+**A `.dom.ts` filename convention.** `extract.dom.ts` needs a document, and
+the repo's jsdom project is selected by filename. Naming the module for it
+keeps the TDD hook's stem match working (`extract.dom.test.ts`) without
+loosening 1.4's rule. Recorded in the developer guide.
+
+**Two caps the plan does not state.** The retained HTML is capped at 40 000
+characters and dropped with a warning past it — the plan caps the text but
+the markup crosses the same message boundary. The climb for a block ancestor
+with text is bounded at eight hops, per the plan's own risk note.
+
+**Not done, and why.** The "done when" clause about a real browser is the one
+item left open: the automated suite covers extraction against jsdom fixtures
+and the gesture against fakes, and the manual pass is written up in the
+developer guide under *Checking it in Firefox → 6. Capturing a selection*.
+Nothing in it has been run against a real Firefox yet.
+
+---
+
 Index: `00-plan.md`. Depends on: M2, M3. Blocks: M7.
 
 ## Goal

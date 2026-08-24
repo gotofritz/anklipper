@@ -1,3 +1,5 @@
+import type { PageCapture } from "@/core/capture";
+import type { CardDraft } from "@/core/draft";
 import type { Result } from "@/core/result";
 import type { ExtensionContext, TransportErrorKind } from "@/platform/types";
 
@@ -9,7 +11,12 @@ import type { ExtensionContext, TransportErrorKind } from "@/platform/types";
  * Adding a message means adding a member here and its reply in `ResponseMap`;
  * the compiler then finds every place that has to change.
  */
-export type Message = { readonly type: "ping" };
+export type Message =
+  | { readonly type: "ping" }
+  /** Background to a content script: read the page's current selection (5.1). */
+  | { readonly type: "capture-selection" }
+  /** Sidebar to the background: what was captured, if anything. */
+  | { readonly type: "get-draft" };
 
 export type MessageType = Message["type"];
 
@@ -19,6 +26,14 @@ export type MessageOf<K extends MessageType> = Extract<Message, { type: K }>;
 export interface ResponseMap {
   /** Which context answered — the sidebar uses it to know the background is up. */
   readonly ping: { readonly from: ExtensionContext };
+  /**
+   * What the page gave up. Blind spots arrive as warnings on the capture
+   * rather than as a failed reply (5.4): a degraded capture still makes a
+   * card, and the warning is what makes the degradation visible.
+   */
+  readonly "capture-selection": PageCapture;
+  /** `undefined` when nothing has been captured yet — the first-run state. */
+  readonly "get-draft": { readonly draft: CardDraft | undefined };
 }
 
 export type ResponseOf<K extends MessageType> = ResponseMap[K];

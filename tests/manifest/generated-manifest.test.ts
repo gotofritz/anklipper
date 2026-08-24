@@ -1,5 +1,10 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { build } from "wxt";
 import { beforeAll, describe, expect, it } from "vitest";
+
+import { CONTENT_SCRIPT_FILE } from "@/platform/scripting";
 
 // Test 6 of the M2 plan, against the artefact that actually ships. The unit
 // test above `manifestExtras` covers what this repository declares; this one
@@ -13,6 +18,8 @@ type Manifest = {
   key?: string;
   sidebar_action?: unknown;
   side_panel?: unknown;
+  commands?: Record<string, unknown>;
+  content_scripts?: unknown;
 };
 
 const built: Record<string, Manifest> = {};
@@ -58,6 +65,35 @@ describe("generated manifest", () => {
       "anklipper@gotofritz.net",
     );
     expect(built.chrome?.key).toEqual(expect.any(String));
+  });
+
+  // M5 injects on the gesture through `activeTab` + `scripting`, by file path.
+  // A path that drifts fails at runtime on a page the tests never open, so it
+  // is pinned against the built output rather than assumed.
+  it.each(["firefox", "chrome"])(
+    "emits the content script where %s injection asks for it",
+    (browser) => {
+      expect(
+        // The constant is a runtime path and so starts with a slash; the
+        // build writes it under the browser's output directory.
+        existsSync(resolve(`.output/${browser}-mv3${CONTENT_SCRIPT_FILE}`)),
+      ).toBe(true);
+    },
+  );
+
+  // A declared content script needs match patterns, and those become
+  // install-time host permissions the ceiling does not allow.
+  it.each(["firefox", "chrome"])(
+    "declares no content script in the %s manifest",
+    (browser) => {
+      expect(built[browser]?.content_scripts).toBeUndefined();
+    },
+  );
+
+  it.each(["firefox", "chrome"])("declares the %s shortcut", (browser) => {
+    expect(Object.keys(built[browser]?.commands ?? {})).toEqual([
+      "create-anki-card",
+    ]);
   });
 
   it("gives each browser its own sidebar surface", () => {

@@ -10,9 +10,10 @@ and test it, see the [developer guide](developer-guide.md). For what is being
 built next, see [the plan index](plans/00-plan.md).
 
 Written at M2, which created the extension skeleton, extended at M3 with the
-card model and the ports, and at M4 with the AnkiConnect adapter behind the
-first of them. Where a layer named below does not exist yet, this file says
-so.
+card model and the ports, at M4 with the AnkiConnect adapter behind the first
+of them, and at M5 with selection capture — the context menu, the shortcut,
+and the extraction that fills a draft. Where a layer named below does not
+exist yet, this file says so.
 
 ## What the extension is
 
@@ -31,6 +32,7 @@ implementation and an in-memory fake, and tests run against the fake.
 |-------|-----------|------------|--------|
 | Result type | `src/core/` | nothing | M2 |
 | Card model, card generation | `src/core/` | nothing | M3 |
+| Capture value (`PageCapture`) | `src/core/capture.ts` | nothing | M5 |
 | Ports and their fakes | `src/core/ports/` | the card model | M3 |
 | Typed messaging | `src/messaging/` | ports | M2 |
 | Platform wrappers (ports + adapters) | `src/platform/` | `browser.*` | M2 |
@@ -38,6 +40,7 @@ implementation and an in-memory fake, and tests run against the fake.
 | Background context | `src/background/` | ports, messaging | M2 |
 | Page context | `src/content/` | ports, messaging | M2 |
 | Sidebar UI | `src/sidebar/` | ports, messaging | M2 |
+| Page extraction | `src/content/extract.dom.ts` | `PageCapture`, a document | M5 |
 | AnkiConnect adapter | `src/anki/` | the card model, `fetch` | M4 |
 | Entrypoints | `src/entrypoints/` | everything | M1 |
 
@@ -61,6 +64,9 @@ so the surface a fake has to cover stays small.
 | `permissions.ts` | `PermissionsPort` | `browser.permissions` |
 | `origin.ts` | `OriginPort` | `runtime.getURL` |
 | `sidebar.ts` | `SidebarPort` | `sidebarAction` **or** `sidePanel` |
+| `scripting.ts` | `ScriptingPort` | `browser.scripting.executeScript` |
+| `commands.ts` | `CommandsPort` | `browser.commands.onCommand` |
+| `draft-store.ts` | `DraftStore` (the M3 port) | `StoragePort` |
 
 In-memory fakes live in `src/platform/fakes/`.
 
@@ -84,6 +90,9 @@ menu in a way no type checks.
 
 The extension has three contexts — background, content script, sidebar — and
 one channel between them.
+
+The union has three members: `ping`, `capture-selection` (background to a
+content script, M5), and `get-draft` (sidebar to the background, M5).
 
 **Every message is a member of one discriminated union** on a `type` field,
 declared in `src/messaging/types.ts` (2.1). All three contexts import that
@@ -149,7 +158,8 @@ a pure function returning a new draft.
 | `draft.ts` | `CardDraft`, `DraftIssue`, and every transition |
 | `cloze.ts` | The `{{cN::…}}` parser and the string transforms over it |
 | `validate.ts` | `validateDraft` — the issue list |
-| `generate.ts` | `generateBasicCard` — selection plus page context to a draft |
+| `capture.ts` | `PageCapture`, `CaptureWarning`, and the extraction caps |
+| `generate.ts` | `generateBasicCard`, `generateFromCapture` — selection plus page context to a draft |
 | `ports/` | `AnkiClient`, `DraftStore`, `SettingsStore`, and their fakes |
 
 **Fields are keyed by the note type's real field names** (3.1). A positional
@@ -167,9 +177,11 @@ editor can name the field and say why. It reports every issue rather than
 stopping at the first.
 
 **Provenance is kept verbatim and separately** (3.6). `draft.source` holds the
-selection exactly as captured, plus the surrounding context, URL, and title,
-while the fields are edited freely. `draft.generation` names the generator and
-its version, so a later AI generator is distinguishable from this one.
+selection exactly as captured, plus the surrounding context, URL, and title —
+and, from M5, the nearest heading and the selection's original HTML (5.2).
+`draft.generation` names the generator and its version, so a later AI
+generator is distinguishable from this one, and carries the capture's
+warnings so the editor can say what could not be read (5.4).
 
 ### Cloze
 
@@ -200,6 +212,48 @@ Character ranges are read against the text as given and used immediately: a
 transition takes text plus a range and returns new text, and never holds an
 offset across an edit.
 
+## Capture
+
+One user gesture — the **Create Anki Card** context-menu entry or its
+keyboard shortcut — becomes a stored draft. `src/background/capture.ts` is
+the whole path, and it is one path however the gesture arrived.
+
+**The page is read by a content script, not by the menu event** (5.1). The
+event's `selectionText` is truncated by the browser and carries no
+surroundings, so it cannot supply the block or heading the card model asks
+for. It is kept as the fallback for a page no content script can run in.
+
+**Fields carry plain text; the original markup is kept beside them** (5.2).
+Line breaks survive; the HTML fragment goes to `source.html` for a later
+milestone to offer rich capture from, without re-extracting. This governs
+capture, not editing.
+
+**The bounds are structural, not arithmetic** (5.3). The selection is capped
+at 10 000 characters and the surrounding context at 1 000; the context itself
+is the nearest block-level ancestor's text, and the heading is the nearest
+preceding `h1`–`h6`. A block ancestor respects the document's structure
+instead of slicing mid-sentence, and a wrapper with no text of its own is
+climbed past, bounded.
+
+**Blind spots fail loudly and specifically** (5.4). `getSelection()` does not
+reach into a shadow root, a cross-origin frame is a separate context, and the
+built-in PDF viewer runs no content script at all. Each becomes a named
+`CaptureWarning` on the capture, carried into `draft.generation.warnings` and
+shown in the sidebar. Where the menu event carried text, a degraded draft is
+still made: a degraded card beats no card, provided the degradation is
+visible.
+
+**The sidebar is opened first, inside the gesture's own task.** Both browsers
+require it, so `captureFromGesture` is not `async` and reaches
+`sidebar.open()` before it awaits anything. The draft is then stored, and the
+sidebar reads it back out with `get-draft` — the two finish in no fixed
+order, and the background is unloaded when idle, so nothing is held in memory
+between them.
+
+**Nothing is injected at page load.** The content script is registered with no
+match patterns; a tab with none answers `no-receiver`, which buys exactly one
+`scripting.executeScript` and one retry.
+
 ## Ports
 
 The domain layer talks to interfaces, never to AnkiConnect or `browser.*`
@@ -210,7 +264,7 @@ them arrive later, and each ships an in-memory fake in
 | Port | Answers with | Real implementation |
 |------|--------------|---------------------|
 | `AnkiClient` | `Result<…, AnkiError>`, `AnkiConnection`, `AnkiHandshake` | `src/anki/`, M4 |
-| `DraftStore` | `Result<…, DraftStoreError>` | over `StoragePort`, M7 |
+| `DraftStore` | `Result<…, DraftStoreError>` | `src/platform/draft-store.ts`, over `StoragePort`, M5 |
 | `SettingsStore` | `Result<…, SettingsStoreError>` | over `StoragePort`, M8 |
 
 Every fake can be driven into failure with `failWith(error)`, because each
@@ -334,7 +388,11 @@ the extraction this extension needs.
 
 The content script is therefore registered at runtime with no match patterns.
 A manifest-declared content script needs match patterns, and those become
-install-time host permissions the ceiling does not allow.
+install-time host permissions the ceiling does not allow. M5 injects it by
+file path on the gesture, and a test pins that path against the built output.
+
+`commands` — the keyboard shortcut, `Alt+Shift+A` — is a manifest key rather
+than a permission, so it widens nothing.
 
 `src/manifest/manifest.ts` holds the declared set and is pinned by
 `manifest.test.ts`; WXT adds Chrome's `sidePanel` permission itself, from the

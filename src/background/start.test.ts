@@ -1,14 +1,66 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import type { PageCapture } from "@/core/capture";
+import { createFakeDraftStore } from "@/core/ports/fakes/fake-draft-store";
+import { ok } from "@/core/result";
 import { createMessenger } from "@/messaging/messenger";
+import type { ContextMenuClick } from "@/platform/context-menus";
+import type { CommandInvocation } from "@/platform/commands";
 import { createFakeRuntimeMessaging } from "@/platform/fakes/fake-runtime-messaging";
 
-import { startBackground } from "./start";
+import { CAPTURE_COMMAND, CAPTURE_MENU_ITEM, startBackground } from "./start";
+
+const CAPTURE: PageCapture = {
+  text: "Paris is the capital of France.",
+  html: "",
+  context: "France is a country in Europe.",
+  heading: "France",
+  title: "France — Example",
+  url: "https://example.test/france",
+  warnings: [],
+};
+
+function harness(overrides: Record<string, unknown> = {}) {
+  const transport = createFakeRuntimeMessaging();
+  transport.connectTab(7, async () => ok(CAPTURE));
+
+  const clicks: ((click: ContextMenuClick) => void)[] = [];
+  const commands: ((invocation: CommandInvocation) => void)[] = [];
+  const menus = {
+    created: [] as unknown[],
+    create: vi.fn(async (item: unknown) => {
+      menus.created.push(item);
+    }),
+    removeAll: vi.fn(async () => {}),
+    onClicked: vi.fn((listener: (click: ContextMenuClick) => void) => {
+      clicks.push(listener);
+      return () => {};
+    }),
+  };
+
+  const deps = {
+    messaging: transport,
+    menus,
+    commands: {
+      onCommand: vi.fn((listener: (invocation: CommandInvocation) => void) => {
+        commands.push(listener);
+        return () => {};
+      }),
+    },
+    scripting: { inject: vi.fn(async () => ok(undefined)) },
+    sidebar: { open: vi.fn(async () => ok(undefined)) },
+    drafts: createFakeDraftStore(),
+    now: () => new Date("2026-01-01T12:00:00.000Z"),
+    ...overrides,
+  };
+
+  return { transport, deps, menus, clicks, commands };
+}
 
 describe("background", () => {
   it("answers a ping once it has started", async () => {
-    const transport = createFakeRuntimeMessaging();
-    startBackground({ messaging: transport });
+    const { transport, deps } = harness();
+    startBackground(deps);
 
     await expect(
       createMessenger(transport).send({ type: "ping" }),
@@ -24,8 +76,8 @@ describe("background", () => {
   });
 
   it("rejects a message it has no handler for, rather than dropping it", async () => {
-    const transport = createFakeRuntimeMessaging();
-    startBackground({ messaging: transport });
+    const { transport, deps } = harness();
+    startBackground(deps);
 
     const reply = await transport.send({ type: "not-a-message" });
 
@@ -42,11 +94,99 @@ describe("background", () => {
   });
 
   it("stops answering once it is stopped", async () => {
-    const transport = createFakeRuntimeMessaging();
+    const { transport, deps } = harness();
 
-    startBackground({ messaging: transport })();
+    startBackground(deps)();
 
     const reply = await createMessenger(transport).send({ type: "ping" });
     expect(reply.ok === false && reply.error.kind).toBe("no-receiver");
+  });
+
+  // The menu entry is shown only on a selection: the extension has nothing to
+  // offer on a page the user has not selected anything on.
+  it("registers one menu entry, on selections only", async () => {
+    const { deps, menus } = harness();
+
+    startBackground(deps);
+    await vi.waitFor(() => expect(menus.created).toHaveLength(1));
+
+    expect(menus.removeAll).toHaveBeenCalled();
+    expect(menus.created[0]).toEqual({
+      id: CAPTURE_MENU_ITEM,
+      title: "Create Anki Card",
+      contexts: ["selection"],
+    });
+  });
+
+  it("captures when its own menu entry is clicked", async () => {
+    const { deps, clicks } = harness();
+    startBackground(deps);
+
+    clicks.forEach((click) =>
+      click({ menuItemId: CAPTURE_MENU_ITEM, tabId: 7 }),
+    );
+
+    await vi.waitFor(async () => {
+      const stored = await deps.drafts.load();
+      expect(stored.ok && stored.value?.fields.Front).toBe(
+        "Paris is the capital of France.",
+      );
+    });
+  });
+
+  it("ignores a click on somebody else's menu entry", async () => {
+    const { deps, clicks } = harness();
+    startBackground(deps);
+
+    clicks.forEach((click) => click({ menuItemId: "someone-else", tabId: 7 }));
+
+    await expect(deps.drafts.load()).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(deps.sidebar.open).not.toHaveBeenCalled();
+  });
+
+  it("captures on the keyboard shortcut too", async () => {
+    const { deps, commands } = harness();
+    startBackground(deps);
+
+    commands.forEach((command) =>
+      command({ command: CAPTURE_COMMAND, tabId: 7 }),
+    );
+
+    await vi.waitFor(async () => {
+      const stored = await deps.drafts.load();
+      expect(stored.ok && stored.value?.fields.Front).toBe(
+        "Paris is the capital of France.",
+      );
+    });
+  });
+
+  it("hands the stored draft to the sidebar when it asks", async () => {
+    const { transport, deps, clicks } = harness();
+    startBackground(deps);
+    clicks.forEach((click) =>
+      click({ menuItemId: CAPTURE_MENU_ITEM, tabId: 7 }),
+    );
+    await vi.waitFor(async () => {
+      const stored = await deps.drafts.load();
+      expect(stored.ok && stored.value).toBeDefined();
+    });
+
+    const reply = await createMessenger(transport).send({ type: "get-draft" });
+
+    expect(reply.ok && reply.value.draft?.source.title).toBe(
+      "France — Example",
+    );
+  });
+
+  it("tells the sidebar there is no draft yet rather than failing", async () => {
+    const { transport, deps } = harness();
+    startBackground(deps);
+
+    const reply = await createMessenger(transport).send({ type: "get-draft" });
+
+    expect(reply).toEqual({ ok: true, value: { draft: undefined } });
   });
 });
