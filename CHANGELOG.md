@@ -9,6 +9,13 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [0.4.0](https://github.com/gotofritz/anklipper/compare/v0.3.0...v0.4.0) (2026-08-24)
+
+
+### Features
+
+* **m4:** AnkiConnect adapter, narrowed by a pass against a real Anki ([#13](https://github.com/gotofritz/anklipper/issues/13)) ([369b1ac](https://github.com/gotofritz/anklipper/commit/369b1ac6e8897f6feb5237645fe696f127bebea0))
+
 ## [0.3.0](https://github.com/gotofritz/anklipper/compare/v0.2.0...v0.3.0) (2026-08-23)
 
 
