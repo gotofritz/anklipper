@@ -1,6 +1,8 @@
 <script lang="ts">
   import { primaryFieldOf } from "@/core/note-type";
+  import type { AnkiClient } from "@/core/ports/types";
 
+  import CardEditor from "./CardEditor.svelte";
   import type { DraftStatus, SidebarStatus } from "./connect";
 
   // The panel is handed its reads rather than building them, so it stays free
@@ -9,11 +11,21 @@
     connect,
     loadDraft,
     subscribe,
+    anki,
+    onCancel,
   }: {
     connect: () => Promise<SidebarStatus>;
     loadDraft: () => Promise<DraftStatus>;
     /** Told when a capture stores a new draft; returns its own disposer. */
     subscribe: (onChange: () => void) => () => void;
+    /**
+     * The port M6's editor is built against. Optional until M7 wires the
+     * AnkiConnect adapter into the entrypoint: without one there is nothing
+     * to add a card through, so the panel shows the capture instead of an
+     * editor that could not submit.
+     */
+    anki?: AnkiClient;
+    onCancel?: () => void;
   } = $props();
 
   let status = $state<SidebarStatus>({ kind: "connecting" });
@@ -62,8 +74,9 @@
     capture.kind === "captured" ? capture.draft : undefined,
   );
 
-  // The editor is M6's; until then the panel shows what was captured, which is
-  // what proves the whole path from the gesture to the draft.
+  // The fallback view, for a panel with no `AnkiClient` yet: what was
+  // captured, which is what proves the whole path from the gesture to the
+  // draft. M7 wires the adapter in and this branch goes.
   const captured = $derived.by(() => {
     if (draft === undefined) return "";
     const primary = primaryFieldOf(draft.noteType);
@@ -78,7 +91,16 @@
   <h1>Anklipper</h1>
   <p role="status">{label}</p>
 
-  {#if capture.kind === "captured" && draft !== undefined}
+  {#if capture.kind === "captured" && draft !== undefined && anki !== undefined}
+    <!--
+      Keyed on the draft: a capture while the sidebar is open replaces it, and
+      the editor holds the draft from the moment it is built, so it is
+      remounted rather than left editing the previous card.
+    -->
+    {#key draft}
+      <CardEditor {anki} {draft} {onCancel} />
+    {/key}
+  {:else if capture.kind === "captured" && draft !== undefined}
     <section aria-label="Captured card">
       <blockquote>{captured}</blockquote>
       <p>

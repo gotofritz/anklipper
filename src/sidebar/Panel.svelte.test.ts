@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { CaptureWarning } from "@/core/capture";
 import { createDraft } from "@/core/draft";
+import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
 import { BASIC } from "@/fixtures/note-types";
 
 import Panel from "./Panel.svelte";
@@ -165,5 +166,41 @@ describe("a capture while the panel is open", () => {
     unmount();
 
     expect(dispose).toHaveBeenCalled();
+  });
+});
+
+// M6's editor is the panel's job once there is an `AnkiClient` to build it
+// against. Until M7 wires the adapter in, a panel without one keeps showing
+// what M5 captured rather than pretending to be able to add anything.
+describe("the card editor", () => {
+  it("edits the captured draft when a client is available", async () => {
+    render(Panel, {
+      connect: never,
+      loadDraft: async () => ({ kind: "captured", draft: draftWith() }),
+      subscribe: noChanges,
+      anki: createFakeAnkiClient({ decks: ["Geography"], noteTypes: [BASIC] }),
+    });
+
+    expect(await screen.findByLabelText("Front")).toHaveValue(
+      "Paris is the capital of France.",
+    );
+    expect(
+      screen.getByRole("button", { name: /add card/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the capture on its own when there is no client yet", async () => {
+    render(Panel, {
+      connect: never,
+      loadDraft: async () => ({ kind: "captured", draft: draftWith() }),
+      subscribe: noChanges,
+    });
+
+    expect(
+      await screen.findByText("Paris is the capital of France."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /add card/i }),
+    ).not.toBeInTheDocument();
   });
 });
