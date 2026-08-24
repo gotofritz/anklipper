@@ -24,7 +24,7 @@ subplan and saying so here, per `AGENTS.md`.
 | P6 | **Deterministic generation only** through M11; no AI, no egress beyond loopback | M12 | Low — additive |
 | P7 | **Cloze is in the MVP**, as a note-type flavour. The markup is pure string work; only *choosing* what to hide needs AI | M3 | Low — but the model must know from M3 |
 | P8 | **The extension's own origin is read at runtime, never hardcoded.** Firefox's `moz-extension://<uuid>` is per installation | M2, M9 | Low, but no constant is correct for two users |
-| P9 | **Onboarding uses AnkiConnect's `requestPermission` handshake**; hand-editing `config.json` is the fallback | M4, M9 | Low — the fallback is written anyway |
+| P9 | ~~Onboarding uses AnkiConnect's `requestPermission` handshake~~ — **reversed at M4** on evidence: the add-on does not enforce `webCorsOriginList` server-side, and a granted host permission exempts the extension from the browser's CORS check, so there is nothing for the handshake to unblock. Removed rather than kept unused. M9 onboards on the host permission alone | M4 4.15, M9 | Low to restore — one action and one reply shape, both in git |
 | P10 | **Rich text editing arrives in M10**, superseding M6's plain textarea. Capture stays plain text | M10 | Medium — changes the input element under M6's tests |
 
 ## Constraints
@@ -92,7 +92,7 @@ Each settled in the subplan named; reversing one means editing that subplan.
 |----------|------------|-------|
 | Note-type switch: drop, remap, or positional? | Remap by field name; unmatched content stashed and restorable | M3, 3.2 |
 | Duplicate detection in the MVP? | Yes, via `canAddNotes`, non-blocking | M4, 4.4 |
-| Is the `requestPermission` handshake needed at all? | **Reopened.** M4's manual pass reached AnkiConnect from a Firefox background page whose origin was absent from `webCorsOriginList`, on Anki 25.09.4. M4 removed `origin-rejected` on that evidence; the handshake is kept, unverified, pending M9 | P9, M4 4.14, M9 |
+| Is the `requestPermission` handshake needed at all? | **No**, on Anki 25.09.4 — the extension reached AnkiConnect from an origin absent from `webCorsOriginList`. P9 reversed and the handshake removed | P9, M4 4.14–4.15 |
 | How much surrounding context? | Nearest block ancestor, capped at 1 000 chars; selection capped at 10 000 | M5, 5.3 |
 | Rich text or plain? | Plain on capture; rich in the editor from M10 | M5 5.2, M10 10.3 |
 | Which browser first? | Firefox; Chrome after the first release | P5, M9 9.5 |

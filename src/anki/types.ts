@@ -1,6 +1,6 @@
 /**
  * Types local to the AnkiConnect adapter (M4). The port's own vocabulary —
- * `AnkiError`, `AnkiConnection`, `AnkiHandshake` — lives in
+ * `AnkiError` and `AnkiConnection` — lives in
  * `src/core/ports/types.ts`; what is here is the wire format and the extra the
  * probe needs, neither of which anything above this layer should see.
  */
@@ -8,7 +8,6 @@
 /** The actions this adapter uses. Nothing else in the codebase names one. */
 export type AnkiAction =
   | "version"
-  | "requestPermission"
   | "deckNames"
   | "modelNames"
   | "modelFieldNames"
@@ -21,7 +20,7 @@ export interface AnkiRequest {
   readonly action: AnkiAction;
   readonly version: number;
   readonly params?: Readonly<Record<string, unknown>>;
-  /** Present only when an API key is configured, and never on the handshake (4.8). */
+  /** Present only when an API key is configured (4.8). */
   readonly key?: string;
 }
 
@@ -41,10 +40,3 @@ export interface AnkiNote {
 export type TemplateMap = Readonly<
   Record<string, Readonly<Record<string, string>>>
 >;
-
-/** The add-on's answer to `requestPermission`. */
-export interface PermissionReply {
-  readonly permission: "granted" | "denied";
-  /** Reported on approval, which is where the API version is read from (4.9). */
-  readonly version?: number;
-}

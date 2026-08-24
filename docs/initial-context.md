@@ -230,7 +230,7 @@ the causes it reports.
 | `transport.ts` | `fetch`, the timeout, and the classification of everything that fails before a reply is parsed. |
 | `errors.ts` | AnkiConnect's error strings, turned into typed causes. |
 | `mapping.ts` | `CardDraft` → note params, and note-type descriptors. |
-| `client.ts` | The port implementation, the probe, and the handshake. |
+| `client.ts` | The port implementation and the probe. |
 | `dev-harness.ts` | A development-only harness for the manual checks, absent from every build. |
 
 **Nothing here imports `browser.*` or Svelte,** and ESLint enforces it for the
@@ -243,8 +243,8 @@ against a stubbed `fetch`, and no test needs a running Anki.
 
 The probe answers with a **cause**, never a boolean (4.3), because each has a
 different fix: Anki not running, the add-on not installed, the origin rejected,
-the host permission not granted, an API key required, the handshake declined, a
-timeout, a malformed reply, or an API-level error. `AnkiError` carries the
+the host permission not granted, an API key required, a timeout, a malformed
+reply, or an API-level error. `AnkiError` carries the
 add-on's own words, plus `origin` on `origin-rejected` — so M9 can show the
 user the value to paste — and `needsManualFix` on a cause no retry will clear.
 
@@ -261,26 +261,24 @@ request goes out. There is no third path, so no call site could reach it.
 With that gone every remaining cause is determinate, which is why the probe
 reports no confidence flag: one that is always `true` says nothing.
 
-### Onboarding is a handshake — but it may not be needed
+### Onboarding is the host permission, and nothing else
 
-The add-on's `requestPermission` action reaches it even from a non-allowlisted
-origin and prompts inside Anki; on approval it appends the origin and saves the
-config (P9). Its reply is unreadable from a rejected origin, so the adapter
-treats it as fire-and-then-re-probe: `asked` means the dialog is up and only a
-following probe establishes what the user did. A readable refusal is
-`permission-denied` with `needsManualFix`, because an origin in the add-on's
-`ignoreOriginList` never sees the dialog again and only a config edit clears
-it.
+The plan pinned onboarding on the add-on's `requestPermission` handshake (P9),
+which prompts inside Anki and appends the extension's origin to
+`webCorsOriginList` on approval. **P9 is reversed** and the handshake is not
+implemented: there is nothing for it to unblock, since the add-on serves this
+extension whether or not it is allowlisted. Restoring it is one action and one
+reply shape if a different AnkiConnect version ever needs it.
 
-**P9 is reopened**, and M9 settles it: the extension reached AnkiConnect
-without being allowlisted at all, so the handshake may be answering a question
-this extension never has to ask. The adapter still implements it, because P9 is
-pinned and M9 owns the decision — not because it is confirmed.
+What is left is the loopback host permission, which Firefox MV3 does not grant
+at install — the user grants it at runtime, from a user gesture (2.7). Until
+they do, every operation answers `permission-missing` before touching the
+network. That is the whole of onboarding, and M9 owns the flow.
 
 `"*"` in `webCorsOriginList` is never suggested. Web pages are the one class
 CORS does constrain, so widening the list is precisely how a site the user
-visits would get to drive their collection. Nothing about the allowlist gates
-a client that is not subject to CORS — curl, a native app, or an extension
+visits would get to drive their collection. Nothing about the allowlist gates a
+client that is not subject to CORS — curl, a native app, or an extension
 holding the host permission — so the extension must not describe it as
 protection against itself.
 
@@ -354,6 +352,6 @@ there — which is the point: one code path, correct on both.
 Selected page text and page context are potentially sensitive. Through M11
 they travel only to loopback. Nothing that carries page content is logged in
 production builds. AnkiConnect's optional `apiKey` is carried on every action
-except the handshake and appears in no log and no diagnostic: the adapter's
+and appears in no log and no diagnostic: the adapter's
 `describeAnkiConnection()` reports whether one is configured, never its
 value.

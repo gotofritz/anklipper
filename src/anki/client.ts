@@ -4,7 +4,6 @@ import type {
   AnkiClient,
   AnkiConnection,
   AnkiError,
-  AnkiHandshake,
   NoteId,
 } from "@/core/ports/types";
 import type { Result } from "@/core/result";
@@ -19,7 +18,6 @@ import {
   readEnvelope,
   readNoteId,
   readNumber,
-  readPermission,
   readStringArray,
   readTemplates,
 } from "./protocol";
@@ -161,39 +159,6 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
       return version.ok
         ? { kind: "connected", apiVersion: version.value }
         : { kind: "unavailable", cause: version.error };
-    },
-
-    async requestPermission(): Promise<AnkiHandshake> {
-      if (!(await hasHostPermission())) {
-        return { kind: "blocked", cause: PERMISSION_MISSING };
-      }
-
-      const asked = await call("requestPermission", undefined, readPermission);
-
-      // Fire-and-then-re-probe (4.7): from a rejected origin the add-on's
-      // reply is unreadable, so a failure here says nothing about what the
-      // user did — only a following probe does.
-      if (!asked.ok) return { kind: "asked" };
-
-      if (asked.value.permission === "denied") {
-        return {
-          kind: "denied",
-          cause: {
-            kind: "permission-denied",
-            message:
-              "Anki refused this extension. If no dialog appeared, the origin is in AnkiConnect's ignoreOriginList and only editing its config will clear it.",
-            origin: config.origin,
-            // The ignoreOriginList case never shows the dialog again, so a
-            // retry loops forever. Say so rather than letting M9 offer one.
-            needsManualFix: true,
-          },
-        };
-      }
-
-      return {
-        kind: "granted",
-        apiVersion: asked.value.version ?? 0,
-      };
     },
 
     async deckNames(): Promise<Result<readonly string[], AnkiError>> {

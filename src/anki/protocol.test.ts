@@ -9,7 +9,6 @@ import {
   readEnvelope,
   readNoteId,
   readNumber,
-  readPermission,
   readStringArray,
   readTemplates,
 } from "./protocol";
@@ -33,12 +32,6 @@ describe("buildRequest", () => {
     const request = buildRequest("deckNames", undefined, "s3cret");
 
     expect(request.key).toBe("s3cret");
-  });
-
-  it("never carries the API key on requestPermission (4.8)", () => {
-    const request = buildRequest("requestPermission", undefined, "s3cret");
-
-    expect("key" in request).toBe(false);
   });
 });
 
@@ -122,18 +115,5 @@ describe("per-operation validators", () => {
     expect(readTemplates(templates)).toEqual({ ok: true, value: templates });
     expect(isOk(readTemplates({ "Card 1": { Front: 3 } }))).toBe(false);
     expect(isOk(readTemplates(["Card 1"]))).toBe(false);
-  });
-
-  it("reads the handshake reply, with the version the add-on reports (4.9)", () => {
-    expect(readPermission({ permission: "granted", version: 6 })).toEqual({
-      ok: true,
-      value: { permission: "granted", version: 6 },
-    });
-    expect(readPermission({ permission: "denied" })).toEqual({
-      ok: true,
-      value: { permission: "denied" },
-    });
-    expect(isOk(readPermission({ permission: "maybe" }))).toBe(false);
-    expect(isOk(readPermission(null))).toBe(false);
   });
 });

@@ -253,83 +253,16 @@ describe("host permission", () => {
   });
 });
 
-describe("the requestPermission handshake (4.7, P9)", () => {
-  it("sends requestPermission and reports asked when the reply is unreadable (3b)", async () => {
-    const { client, sent } = clientWith(() => networkFailure(), {
-      apiKey: API_KEY,
-    });
-
-    const handshake = await client.requestPermission();
-
-    expect(handshake).toEqual({ kind: "asked" });
-    expect(sent[0]?.action).toBe("requestPermission");
-    expect(sent[0] && "key" in sent[0]).toBe(false);
-  });
-
-  it("resolves to connected when the following probe succeeds (3c)", async () => {
-    let allowlisted = false;
-    const { client } = clientWith((body) => {
-      if (body.action === "requestPermission") {
-        allowlisted = true;
-        return networkFailure();
-      }
-      return allowlisted ? ok(6) : networkFailure();
-    });
-
-    expect(await client.probe()).toMatchObject({ kind: "unavailable" });
-    expect(await client.requestPermission()).toEqual({ kind: "asked" });
-    expect(await client.probe()).toEqual({ kind: "connected", apiVersion: 6 });
-  });
-
-  it("reports a refusal as permission-denied, needing a manual fix rather than a retry (3d)", async () => {
-    const { client } = clientWith(() => ok({ permission: "denied" }));
-
-    const handshake = await client.requestPermission();
-
-    expect(handshake).toMatchObject({
-      kind: "denied",
-      cause: { kind: "permission-denied", needsManualFix: true },
-    });
-  });
-
-  it("reports a readable approval as granted, with the version the add-on reports", async () => {
-    const { client } = clientWith(() =>
-      ok({ permission: "granted", requireApikey: false, version: 6 }),
-    );
-
-    expect(await client.requestPermission()).toEqual({
-      kind: "granted",
-      apiVersion: 6,
-    });
-  });
-
-  it("cannot ask at all without the host permission", async () => {
-    const { client, fetch } = clientWith(() => ok(6), {
-      hostPermission: false,
-    });
-
-    expect(await client.requestPermission()).toMatchObject({
-      kind: "blocked",
-      cause: { kind: "permission-missing" },
-    });
-    expect(fetch).not.toHaveBeenCalled();
-  });
-});
-
 describe("the optional API key (4.8)", () => {
-  it("carries the key on every action except requestPermission (3e)", async () => {
+  it("carries the key on every action (3e)", async () => {
     const { client, sent } = clientWith(() => ok([]), { apiKey: API_KEY });
 
+    await client.probe();
     await client.deckNames();
     await client.noteTypes();
-    await client.requestPermission();
 
-    const keyed = sent.filter((one) => one.action !== "requestPermission");
-    expect(keyed.length).toBeGreaterThan(0);
-    expect(keyed.every((one) => one.key === API_KEY)).toBe(true);
-    expect(
-      sent.some((one) => one.action === "requestPermission" && "key" in one),
-    ).toBe(false);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent.every((one) => one.key === API_KEY)).toBe(true);
   });
 
   it("surfaces the add-on's key error as api-key-required (3e)", async () => {

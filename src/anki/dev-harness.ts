@@ -1,12 +1,7 @@
 import type { CardDraft } from "@/core/draft";
 import { generateBasicCard } from "@/core/generate";
 import type { NoteType, NoteTypeKind } from "@/core/note-type";
-import type {
-  AnkiClient,
-  AnkiConnection,
-  AnkiError,
-  AnkiHandshake,
-} from "@/core/ports/types";
+import type { AnkiClient, AnkiConnection, AnkiError } from "@/core/ports/types";
 
 import type { AnkiClientConfig, AnkiDiagnostics } from "./client";
 import { createAnkiClient, describeAnkiConnection } from "./client";
@@ -81,7 +76,6 @@ export interface DevHarness {
   readonly drafts: SampleDrafts;
   diagnostics(): AnkiDiagnostics;
   probe(): Promise<AnkiConnection>;
-  requestPermission(): Promise<AnkiHandshake>;
   /** Permission, probe, decks, note types. Writes nothing. */
   survey(): Promise<Survey>;
 }
@@ -120,7 +114,6 @@ export function createDevHarness(deps: DevHarnessDeps): DevHarness {
 
     diagnostics: () => describeAnkiConnection(config),
     probe: () => client.probe(),
-    requestPermission: () => client.requestPermission(),
 
     async survey(): Promise<Survey> {
       const failures: SurveyFailure[] = [];

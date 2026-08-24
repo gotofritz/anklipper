@@ -111,29 +111,4 @@ describe("createFakeAnkiClient", () => {
       cause: { kind: "anki-not-running" },
     });
   });
-
-  it("answers the handshake, and counts how often it was asked", async () => {
-    const client = createFakeAnkiClient();
-
-    expect(await client.requestPermission()).toEqual({
-      kind: "granted",
-      apiVersion: 6,
-    });
-    expect(client.handshakes.count).toBe(1);
-  });
-
-  it("can be told to refuse the handshake, so P9's dead end is testable", async () => {
-    const client = createFakeAnkiClient({
-      handshake: {
-        kind: "denied",
-        cause: {
-          kind: "permission-denied",
-          message: "declined",
-          needsManualFix: true,
-        },
-      },
-    });
-
-    expect(await client.requestPermission()).toMatchObject({ kind: "denied" });
-  });
 });

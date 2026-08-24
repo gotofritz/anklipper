@@ -99,8 +99,18 @@ flag" along with the plan's error-taxonomy entry for `origin-rejected` and its
 test 4. A guard for a case no call site can reach is a claim the code cannot
 keep, and the second request per failure was real cost paid for it.
 
-The handshake itself stays, because P9 is a pinned decision and M9 owns
-settling it — not because it is confirmed. It is not.
+**The `requestPermission` handshake went too**, and with it `permission-denied`,
+`AnkiHandshake`, and `AnkiError`'s `origin` and `needsManualFix` fields, which
+had no other user. It was kept for one commit on the grounds that P9 was pinned
+and M9 owned the decision. That was the wrong call: an unused path kept pending
+a decision is one nobody later dares delete, and the evidence against it was
+already in hand. **P9 is reversed in the plan index**, which is where a pinned
+decision has to change. Restoring it is one action and one reply shape, both in
+git, if a different AnkiConnect ever turns out to need it.
+
+What remains between the extension and Anki is the loopback host permission,
+which Firefox MV3 makes the user grant at runtime (2.7). That is the whole of
+onboarding now, and it is M9's.
 
 **`empty-cloze` did not reproduce, and has been removed.** Anki accepted a
 cloze note whose only field held no deletions — twice, returning a note id
@@ -134,10 +144,6 @@ satisfied by a note type every Anki ships.
 
 ### Still unverified
 
-* The handshake end to end — no dialog can be provoked while the add-on serves
-  the origin anyway. It is implemented and unverified, and M9 decides whether
-  it survives at all.
-* `permission-denied`, and the `ignoreOriginList` dead end behind it.
 * `api-key-required` against an add-on with `apiKey` set.
 * Whether any of this holds on a different AnkiConnect. The pass covers one
   build, and "does it enforce the allowlist" is exactly the kind of thing that
@@ -156,6 +162,7 @@ satisfied by a note type every Anki ships.
 | 4.12 | `addNote` sends `allowDuplicate: true` | The only way 4.4's warning stays a warning, given `addNote(draft)` takes no override. |
 | 4.13 | `empty-cloze` is **not** in the taxonomy | Removed after the manual pass: Anki accepts a deletion-less cloze note, so nothing could ever raise it. M3's validation is the guard. |
 | 4.14 | `origin-rejected` is **not** in the taxonomy, and the probe reports no confidence | Removed after the manual pass: the add-on does not enforce its allowlist server-side, and a granted host permission exempts the extension from the browser's CORS check, so no call site reaches it. With it gone every remaining cause is determinate. |
+| 4.15 | The `requestPermission` handshake is **not** implemented, reversing P9 | Nothing is left for it to unblock. `permission-denied`, `AnkiHandshake`, and `AnkiError`'s `origin` and `needsManualFix` go with it. The host permission is the whole of onboarding, and it is M9's. |
 
 ## Goal
 

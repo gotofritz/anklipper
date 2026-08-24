@@ -3,13 +3,7 @@ import type { NoteType } from "../../note-type";
 import { primaryFieldOf } from "../../note-type";
 import type { Result } from "../../result";
 import { err, ok } from "../../result";
-import type {
-  AnkiClient,
-  AnkiConnection,
-  AnkiError,
-  AnkiHandshake,
-  NoteId,
-} from "../types";
+import type { AnkiClient, AnkiConnection, AnkiError, NoteId } from "../types";
 
 export interface FakeAnkiClientOptions {
   readonly decks?: readonly string[];
@@ -18,15 +12,11 @@ export interface FakeAnkiClientOptions {
   readonly duplicates?: readonly string[];
   /** What the version probe reports when the fake is not failing (4.9). */
   readonly apiVersion?: number;
-  /** What the handshake answers, so M9 can test each branch of P9. */
-  readonly handshake?: AnkiHandshake;
 }
 
 export interface FakeAnkiClient extends AnkiClient {
   /** Every draft the fake accepted, in order. */
   readonly added: readonly CardDraft[];
-  /** How many times the handshake has been asked for. */
-  readonly handshakes: { readonly count: number };
   /** Drive the fake into failure, or out of it again with `undefined`. */
   failWith(error: AnkiError | undefined): void;
 }
@@ -44,7 +34,6 @@ export function createFakeAnkiClient(
   const duplicates = new Set(options.duplicates ?? []);
   const apiVersion = options.apiVersion ?? 6;
   const added: CardDraft[] = [];
-  const handshakes = { count: 0 };
   let failure: AnkiError | undefined;
 
   function refuse<T>(): Result<T, AnkiError> | undefined {
@@ -58,7 +47,6 @@ export function createFakeAnkiClient(
 
   return {
     added,
-    handshakes,
 
     failWith(error: AnkiError | undefined): void {
       failure = error;
@@ -68,11 +56,6 @@ export function createFakeAnkiClient(
       return failure === undefined
         ? { kind: "connected", apiVersion }
         : { kind: "unavailable", cause: failure };
-    },
-
-    async requestPermission(): Promise<AnkiHandshake> {
-      handshakes.count += 1;
-      return options.handshake ?? { kind: "granted", apiVersion };
     },
 
     async deckNames(): Promise<Result<readonly string[], AnkiError>> {

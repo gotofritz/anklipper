@@ -307,29 +307,12 @@ with a `no-cors` probe; the manual pass found AnkiConnect serving a
 non-allowlisted origin, so `origin-rejected` was removed. See the archived M4
 plan.
 
-#### 5.2 The handshake, from a clean allowlist
-
-Anki running, origin still not allowlisted:
-
-```js
-await anklipper.requestPermission()
-```
-
-Expect `{ kind: "asked" }`, and a permission dialog inside Anki. Approve it,
-then `await anklipper.probe()` — expect `{ kind: "connected", apiVersion: 6 }`
-with no Anki restart. Reopen AnkiConnect's config and confirm the origin it
-appended is character-for-character the one from step 3.
-
-Declining instead should give `permission-denied` with `needsManualFix`. An
-origin in the add-on's `ignoreOriginList` never sees the dialog again, which
-is why that cause is not a retry.
-
-#### 5.3 A missing host permission is caught before the network
+#### 5.2 A missing host permission is caught before the network
 
 Turn the host permission back off in `about:addons`, open the Network tab,
 and probe. Expect `permission-missing` and **no request at all**.
 
-#### 5.4 Note types, including a custom cloze one
+#### 5.3 Note types, including a custom cloze one
 
 Connected, `survey()` should list every deck and note type. The interesting
 field is `clozeNoteTypes`.
@@ -339,7 +322,7 @@ something with no "cloze" in it. It must still appear in `clozeNoteTypes` —
 that is the check that the flavour is read from the templates rather than
 guessed from the name, and the one the name heuristic fails.
 
-#### 5.5 Adding a note
+#### 5.4 Adding a note
 
 These write to your collection. Every sample is tagged
 `anklipper-manual-check`, so the run is one search away in Anki's browser
@@ -361,7 +344,7 @@ Note that Anki accepts a cloze note with **no** deletions rather than
 refusing it, so nothing downstream catches one. `validateDraft`'s
 `cloze-no-deletions` is the only guard there is.
 
-#### 5.6 An API key, if you use one
+#### 5.5 An API key, if you use one
 
 Set `apiKey` in AnkiConnect's config, restart Anki, and probe with no key
 configured. Expect `api-key-required`.

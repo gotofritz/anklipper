@@ -2,12 +2,7 @@ import type { AnkiError } from "@/core/ports/types";
 import type { Result } from "@/core/result";
 import { err, ok } from "@/core/result";
 
-import type {
-  AnkiAction,
-  AnkiRequest,
-  PermissionReply,
-  TemplateMap,
-} from "./types";
+import type { AnkiAction, AnkiRequest, TemplateMap } from "./types";
 
 /**
  * The wire format, and the only place it is built or read (4.5).
@@ -20,8 +15,8 @@ import type {
 /**
  * The version the request envelope carries. AnkiConnect has answered `6` since
  * 2018 and rejects an envelope that names a newer one, so it is pinned here
- * rather than negotiated. What the *add-on* reports — from `version` and from
- * the handshake — is read at runtime and surfaced instead (4.9).
+ * rather than negotiated. What the *add-on* reports, from the `version`
+ * action, is read at runtime and surfaced instead (4.9).
  */
 export const ANKI_CONNECT_API_VERSION = 6;
 
@@ -30,11 +25,7 @@ export function buildRequest(
   params?: Readonly<Record<string, unknown>>,
   apiKey?: string,
 ): AnkiRequest {
-  // The handshake is the one action a rejected origin may call, and it is
-  // answered before any key is checked — so sending the key there would leak
-  // it to whatever is on the port without buying anything (4.8).
-  const keyed =
-    apiKey !== undefined && apiKey !== "" && action !== "requestPermission";
+  const keyed = apiKey !== undefined && apiKey !== "";
 
   return {
     action,
@@ -136,27 +127,4 @@ export function readTemplates(result: unknown): Result<TemplateMap, AnkiError> {
   }
 
   return ok(result as TemplateMap);
-}
-
-export function readPermission(
-  result: unknown,
-): Result<PermissionReply, AnkiError> {
-  if (!isRecord(result)) {
-    return err(malformed("a handshake reply that is not an object"));
-  }
-
-  const { permission, version } = result;
-  if (permission !== "granted" && permission !== "denied") {
-    return err(malformed("a handshake reply with no permission in it"));
-  }
-  if (version !== undefined && typeof version !== "number") {
-    return err(
-      malformed("a handshake reply with a version that is not a number"),
-    );
-  }
-
-  return ok({
-    permission,
-    ...(typeof version === "number" ? { version } : {}),
-  });
 }
