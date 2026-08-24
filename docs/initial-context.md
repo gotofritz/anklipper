@@ -284,22 +284,22 @@ protection against itself.
 
 ### What the adapter does and does not decide
 
-* **Duplicates are a warning, not a block** (4.4). `canAddNote` reports one
+- **Duplicates are a warning, not a block** (4.4). `canAddNote` reports one
   through `canAddNotes`; `addNote` sends `allowDuplicate: true`, so a user who
   is told and goes ahead anyway is not stopped.
-* **The fields go out verbatim, and nothing is injected.** Source URL and title
+- **The fields go out verbatim, and nothing is injected.** Source URL and title
   are provenance on the draft (3.6); a note type with a field for them is
   filled by the editor. Cloze braces are passed through untouched — parsing
   them belongs to the card model.
-* **Cloze flavour is read from the note type's templates**, via
+- **Cloze flavour is read from the note type's templates**, via
   `modelTemplates`, and falls back to M3's name heuristic only when the
   templates cannot be read (4.6). The descriptor carries it, so no layer above
   re-derives it.
-* **Every reply is validated, never cast** (4.5), and a reply that does not
+- **Every reply is validated, never cast** (4.5), and a reply that does not
   validate is `malformed-response` rather than a crash three layers away.
-* **Every call has a timeout**, because Anki can accept a connection and never
+- **Every call has a timeout**, because Anki can accept a connection and never
   answer.
-* Requests carry **no headers**, which keeps every call a CORS-simple request
+- Requests carry **no headers**, which keeps every call a CORS-simple request
   and takes the add-on's preflight handling out of the path.
 
 **The extension's origin is read at runtime, never hardcoded** (P8, 2.6).
