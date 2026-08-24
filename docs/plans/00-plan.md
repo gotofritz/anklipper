@@ -74,9 +74,9 @@ AnkiConnect interface precedes the editor that renders its data.
 | M1 | Toolchain, test harness, CI — green before any feature work | — | done: `docs/archive/01-toolchain-and-test-harness.md` |
 | M2 | Extension skeleton: manifest, permissions, typed messaging, platform wrappers | M1 | done: `docs/archive/02-extension-skeleton.md` |
 | M3 | `CardDraft`, validation, cloze markup, deterministic generation, port interfaces and fakes | M2 | done: `docs/archive/03-card-draft-model-and-ports.md` |
-| M4 | AnkiConnect adapter and its error taxonomy, against mocked HTTP | M3 | `04-ankiconnect-adapter.md` |
+| M4 | AnkiConnect adapter and its error taxonomy, against mocked HTTP | M3 | done: `docs/archive/04-ankiconnect-adapter.md` |
 | M5 | Selection and page-context extraction; context menu and shortcut | M2, M3 | done: `docs/archive/05-selection-and-page-context.md` |
-| M6 | Sidebar editor, built against the fake adapter | M3, M4 | `06-svelte-editor.md` |
+| M6 | Sidebar editor, built against the fake adapter | M3, M4 | done: `docs/archive/06-svelte-editor.md` |
 | M7 | End-to-end MVP, with the draft persisted from the moment it exists | M4, M5, M6 | `07-end-to-end-mvp.md` |
 | M8 | Settings, storage, and schema migration | M7 | `08-settings-and-persistence.md` |
 | M9 | Onboarding, connection diagnostics, repeat-capture polish | M8 | `09-onboarding-and-diagnostics.md` |

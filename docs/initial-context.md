@@ -11,9 +11,10 @@ built next, see [the plan index](plans/00-plan.md).
 
 Written at M2, which created the extension skeleton, extended at M3 with the
 card model and the ports, at M4 with the AnkiConnect adapter behind the first
-of them, and at M5 with selection capture — the context menu, the shortcut,
-and the extraction that fills a draft. Where a layer named below does not
-exist yet, this file says so.
+of them, at M5 with selection capture — the context menu, the shortcut, and
+the extraction that fills a draft — and at M6 with the sidebar editor built
+on all of it. Where a layer named below does not exist yet, this file says
+so.
 
 ## What the extension is
 
@@ -40,6 +41,7 @@ implementation and an in-memory fake, and tests run against the fake.
 | Background context | `src/background/` | ports, messaging | M2 |
 | Page context | `src/content/` | ports, messaging | M2 |
 | Sidebar UI | `src/sidebar/` | ports, messaging | M2 |
+| Sidebar editor: view-model and components | `src/sidebar/` | ports, the card model | M6 |
 | Page extraction | `src/content/extract.dom.ts` | `PageCapture`, a document | M5 |
 | AnkiConnect adapter | `src/anki/` | the card model, `fetch` | M4 |
 | Entrypoints | `src/entrypoints/` | everything | M1 |
@@ -388,6 +390,71 @@ carries.
 reload — otherwise the user's own allowlist entry would break every time.
 Firefox: `browser_specific_settings.gecko.id`. Chrome: `key`, which fixes the
 id an unpacked build loads under. Both live in `src/manifest/manifest.ts`.
+
+## The sidebar editor
+
+`src/sidebar/` is the whole UI (M6). It is handed an `AnkiClient` and renders
+a `CardDraft`. It holds no protocol knowledge and reaches no `browser.*` API,
+so its tests run against M3's in-memory fake rather than a running Anki.
+
+| Module | Holds |
+|--------|-------|
+| `Panel.svelte` | The shell: connection status, and the editor once there is a client to build it against. |
+| `editor-model.svelte.ts` | The view-model — the draft, the asynchronous state, and every intent. |
+| `CardEditor.svelte` | The form: deck, note type, fields, source, warnings, actions. |
+| `ClozeControls.svelte` | The deletion list, and the two things done to it. |
+| `TagEditor.svelte` | Tags in, intents out. |
+| `error-copy.ts` | Every sentence the editor says about a failure. |
+| `connect.ts` | The two reads the panel makes over the message channel (M5). |
+
+**One view-model between the components and the ports** (6.2). Loading and
+error state lives there instead of being scattered across components, which
+hold nothing of their own beyond the text in a tag box and which ordinal a
+dropdown is on. `editor-model.svelte.ts` is a Svelte rune module: the
+`.svelte.ts` suffix is what gets it compiled, which is what makes `$state`
+work outside a component. The draft it holds is `$state.raw`, since a draft is
+an immutable value replaced whole on every transition (3.3).
+
+**Components emit intents; every transition goes through the card model's pure
+functions** (6.1). No component computes a new draft, writes cloze markup, or
+decides what a note-type change does to the fields. Those rules are M3's, and
+a second copy of one in a dropdown handler is how the UI and the model start
+disagreeing.
+
+**Every asynchronous read is idle, loading, ready, or failed** (6.3). A
+silently empty deck list is indistinguishable from Anki being closed.
+
+**Failures render as a cause and a next action** (6.4), from M4's taxonomy,
+in one module — which M9's onboarding reuses. Every cause has an entry, and
+each table is keyed by its own union, so a cause added below without copy here
+is a type error rather than a default "something went wrong". The same holds
+for M3's `DraftIssue` and `ClozeIssue`, which are what a field error and a
+refused mark actually say.
+
+**Native controls with real labels** (6.5): `select`, `textarea`, `input`,
+`button`, `details`. A custom listbox would be an accessibility liability
+bought for nothing.
+
+**Cloze editing is a plain `<textarea>` and its `selectionStart` /
+`selectionEnd`** (6.6) — superseded deliberately by M10's rich editor (P10).
+Marking is "wrap this range", which a textarea gives for free. The component
+reads the range, hands it to the card model, renders what comes back, and
+puts the caret past the markup that was written; otherwise a second mark
+lands wherever the value update left the cursor. `Ctrl+Shift+C` is Anki's own
+shortcut for it.
+
+**The cloze controls appear for cloze note types only** (6.7), read from
+`NoteType.kind` — the adapter's descriptor (4.6) — never by matching the note
+type's name in the UI.
+
+**The duplicate warning does not block** (4.4). It appears when `canAddNote`
+reports that Anki already holds the first field, and it stops appearing the
+moment that field changes: a warning about text the user has already replaced
+is worse than no warning.
+
+**The panel's `AnkiClient` is optional until M7**, whose job is wiring the
+adapter into the entrypoint. A panel handed no client shows M5's capture
+summary rather than an editor that could not submit.
 
 ## Permissions
 

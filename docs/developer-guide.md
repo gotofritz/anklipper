@@ -74,7 +74,9 @@ fake, and that is what tests run against.
 - **Card generation** — selected text plus page context to a `CardDraft`.
 - **Content/page layer** — selection and page-context extraction.
 - **Extension/background layer** — lifecycle, messaging, browser APIs.
-- **Svelte UI** — the sidebar editor. No AnkiConnect protocol logic.
+- **Svelte UI** — the sidebar editor: one view-model over the ports, and
+  components that render it and hand back intents. No AnkiConnect protocol
+  logic, and no `browser.*`.
 - **AnkiConnect adapter** — the only place that knows the wire format.
 - **Settings/storage** — configuration and persistence.
 
@@ -185,6 +187,13 @@ A **module** that needs a document is named `*.dom.ts` for the same reason —
 `src/content/extract.dom.ts` is the one — so that its stem-matching test
 (`extract.dom.test.ts`) lands in the jsdom project and the TDD hook still
 finds it. The suffix is the marker: anything without it must run in node.
+
+A **module that uses runes** is named `*.svelte.ts` —
+`src/sidebar/editor-model.svelte.ts` is the one — because `$state` outside a
+component needs the Svelte compiler, which only the jsdom project has. Its
+stem-matching test is `editor-model.svelte.test.ts`, which lands there too.
+It needs the compiler rather than a document; here those are the same
+project.
 
 Extension APIs are not mocked by hand. `browser.*` resolves to
 `@webext-core/fake-browser` in both projects, and its state is reset before
@@ -410,6 +419,19 @@ rather than producing an empty card:
 The extraction itself — the block ancestor, the heading, the caps, the
 whitespace handling — is covered by `src/content/extract.dom.test.ts` and
 does not need a browser.
+
+### 7. The editor, once there is a client for it
+
+Not yet runnable. M6 built the editor against the `AnkiClient` port and its
+in-memory fake; the sidebar entrypoint builds no adapter, so a development
+build still shows M5's capture summary. Two things need eyes rather than a
+test, and both wait on M7 wiring the adapter in:
+
+- **The layout at a narrow width.** jsdom has no layout engine, so nothing in
+  the suite can see a horizontal scrollbar. Drag the sidebar as narrow as
+  Firefox allows and check that nothing overflows sideways.
+- **The whole flow from the keyboard.** Tab through every control, mark a
+  cloze deletion with `Ctrl+Shift+C`, and add the card with `Ctrl+Enter`.
 
 ## Plans and documentation
 
