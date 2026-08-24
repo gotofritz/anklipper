@@ -3,13 +3,15 @@ import type { NoteType } from "../../note-type";
 import { primaryFieldOf } from "../../note-type";
 import type { Result } from "../../result";
 import { err, ok } from "../../result";
-import type { AnkiClient, AnkiError, NoteId } from "../types";
+import type { AnkiClient, AnkiConnection, AnkiError, NoteId } from "../types";
 
 export interface FakeAnkiClientOptions {
   readonly decks?: readonly string[];
   readonly noteTypes?: readonly NoteType[];
   /** Primary-field values Anki is pretending to hold already. */
   readonly duplicates?: readonly string[];
+  /** What the version probe reports when the fake is not failing (4.9). */
+  readonly apiVersion?: number;
 }
 
 export interface FakeAnkiClient extends AnkiClient {
@@ -30,6 +32,7 @@ export function createFakeAnkiClient(
   const decks = [...(options.decks ?? ["Default"])];
   const noteTypes = [...(options.noteTypes ?? [])];
   const duplicates = new Set(options.duplicates ?? []);
+  const apiVersion = options.apiVersion ?? 6;
   const added: CardDraft[] = [];
   let failure: AnkiError | undefined;
 
@@ -49,6 +52,12 @@ export function createFakeAnkiClient(
       failure = error;
     },
 
+    async probe(): Promise<AnkiConnection> {
+      return failure === undefined
+        ? { kind: "connected", apiVersion }
+        : { kind: "unavailable", cause: failure };
+    },
+
     async deckNames(): Promise<Result<readonly string[], AnkiError>> {
       return refuse<readonly string[]>() ?? ok(decks);
     },
@@ -61,20 +70,19 @@ export function createFakeAnkiClient(
       return refuse<boolean>() ?? ok(!duplicates.has(firstFieldOf(draft)));
     },
 
+    /**
+     * A duplicate does not refuse the add (4.4). `canAddNote` is what reports
+     * it, and the user may genuinely want a near-duplicate — a fake that
+     * blocked here would have every consumer above it build a block instead of
+     * the warning the milestone pins. `failWith({kind: "duplicate-note"})`
+     * still drives the refusing path for a caller that needs it.
+     */
     async addNote(draft: CardDraft): Promise<Result<NoteId, AnkiError>> {
       const refused = refuse<NoteId>();
       if (refused) return refused;
 
-      const first = firstFieldOf(draft);
-      if (duplicates.has(first)) {
-        return err({
-          kind: "duplicate-note",
-          message: `a note with the first field "${first}" already exists`,
-        });
-      }
-
       added.push(draft);
-      duplicates.add(first);
+      duplicates.add(firstFieldOf(draft));
       return ok(added.length);
     },
   };

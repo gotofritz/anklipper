@@ -23,8 +23,10 @@ export type AnkiErrorKind =
   | "anki-not-running"
   /** Something answered, but not AnkiConnect — the add-on is not installed. */
   | "addon-missing"
-  /** The extension's origin is absent from `webCorsOriginList`. */
-  | "origin-rejected"
+  /** The loopback host permission has not been granted (2.7, Firefox MV3). */
+  | "permission-missing"
+  /** The add-on has an `apiKey` set and the request carried none, or a wrong one. */
+  | "api-key-required"
   /** A reply that was not the shape AnkiConnect promises. */
   | "malformed-response"
   /** Anki already holds a note with this first field. */
@@ -32,6 +34,8 @@ export type AnkiErrorKind =
   | "unknown-deck"
   | "unknown-note-type"
   | "unknown-field"
+  /** Anki accepted the connection and never answered. */
+  | "timeout"
   /** An API-level error with no more specific kind. */
   | "api-error";
 
@@ -40,9 +44,25 @@ export interface AnkiError {
   readonly message: string;
 }
 
+/**
+ * What the probe answers with (4.3): a cause, never a boolean. "Not available"
+ * is several different problems with several different fixes.
+ *
+ * The plan also asked for a confidence flag, because a rejected origin and a
+ * dead port would both surface as a failed `fetch` and the adapter would have
+ * to guess between them. M4's manual pass removed the ambiguity rather than
+ * resolving it — see the archived plan — so every cause the probe can report
+ * is now determinate, and a flag that is always `true` says nothing.
+ */
+export type AnkiConnection =
+  | { readonly kind: "connected"; readonly apiVersion: number }
+  | { readonly kind: "unavailable"; readonly cause: AnkiError };
+
 export type NoteId = number;
 
 export interface AnkiClient {
+  /** Why AnkiConnect is or is not usable (4.3). Never throws. */
+  probe(): Promise<AnkiConnection>;
   deckNames(): Promise<Result<readonly string[], AnkiError>>;
   noteTypes(): Promise<Result<readonly NoteType[], AnkiError>>;
   /** Whether the note could be added — duplicate detection, non-blocking (4.4). */

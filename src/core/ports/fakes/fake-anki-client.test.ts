@@ -61,8 +61,8 @@ describe("createFakeAnkiClient", () => {
   it("fails every action while it is failing, not only the one under test", async () => {
     const client = createFakeAnkiClient();
     client.failWith({
-      kind: "origin-rejected",
-      message: "origin not allowlisted",
+      kind: "addon-missing",
+      message: "no AnkiConnect on the port",
     });
 
     expect(isErr(await client.deckNames())).toBe(true);
@@ -78,13 +78,37 @@ describe("createFakeAnkiClient", () => {
     expect(isOk(await client.deckNames())).toBe(true);
   });
 
-  it("reports a duplicate the way AnkiConnect does, so callers can test 4.4", async () => {
+  it("reports a duplicate as a warning, and still adds the note (4.4)", async () => {
     const client = createFakeAnkiClient({ duplicates: ["Paris"] });
 
     const canAdd = await client.canAddNote(draft("Paris"));
     const result = await client.addNote(draft("Paris"));
 
     expect(isOk(canAdd) && canAdd.value).toBe(false);
-    expect(isErr(result) && result.error.kind).toBe("duplicate-note");
+    // The adapter sends `allowDuplicate`, so a caller that warned and was told
+    // to go ahead anyway gets the note added. A fake that refused here would
+    // have every consumer build a block instead of the warning 4.4 pins.
+    expect(isOk(result)).toBe(true);
+    expect(client.added).toHaveLength(1);
+  });
+
+  it("can still be driven down the refusing path a duplicate used to take", async () => {
+    const client = createFakeAnkiClient();
+    client.failWith({ kind: "duplicate-note", message: "already there" });
+
+    expect(isErr(await client.addNote(draft("Paris")))).toBe(true);
+  });
+
+  it("probes as connected, reporting a version, until it is driven into failure", async () => {
+    const client = createFakeAnkiClient({ apiVersion: 6 });
+
+    expect(await client.probe()).toEqual({ kind: "connected", apiVersion: 6 });
+
+    client.failWith({ kind: "anki-not-running", message: "nothing answered" });
+
+    expect(await client.probe()).toMatchObject({
+      kind: "unavailable",
+      cause: { kind: "anki-not-running" },
+    });
   });
 });
