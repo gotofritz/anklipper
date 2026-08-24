@@ -8,16 +8,18 @@ For what the extension does and how to use it, see the
 
 ## Where things stand
 
-M3 has landed. The toolchain and CI are green (M1), the extension has its
+M5 has landed. The toolchain and CI are green (M1), the extension has its
 skeleton (M2) — three contexts talking over a typed message channel, every
 `browser.*` call behind a port in `src/platform/`, the MVP permission set and
-the pinned extension identity in the manifest — and `src/core/` now holds the
-card model: `CardDraft` and its transitions, cloze markup, validation,
-deterministic generation, and the three ports with their in-memory fakes.
+the pinned extension identity in the manifest — `src/core/` holds the card
+model (M3), `src/anki/` holds the AnkiConnect adapter and its error taxonomy
+(M4), and selecting text now produces a stored draft: the **Create Anki
+Card** context-menu entry and its `Alt+Shift+A` shortcut, on-demand injection
+of the content script, and extraction of the selection, its surrounding
+block, the nearest heading, and the page's title and URL.
 
-Nothing user-facing works yet. The card model has no adapter to talk to and no
-editor to render it: AnkiConnect is M4, extraction is M5, the sidebar editor
-is M6, and M7 is what joins them up.
+The sidebar shows what was captured; it cannot yet be edited or added. The
+editor is M6, and M7 joins the capture to the adapter.
 
 `docs/initial-context.md` is the authoritative description of that
 architecture. Read it before changing a layer boundary, a message shape, or a
@@ -91,7 +93,7 @@ On disk:
   outside the entrypoint that starts it.
 - `src/core/` — framework-independent domain code: the `Result` type, and the
   card model — `note-type.ts`, `draft.ts`, `cloze.ts`, `validate.ts`,
-  `generate.ts`. `src/core/ports/` declares the `AnkiClient`, `DraftStore`,
+  `capture.ts`, `generate.ts`. `src/core/ports/` declares the `AnkiClient`, `DraftStore`,
   and `SettingsStore` interfaces, with an in-memory fake for each under
   `ports/fakes/`. The fakes can be told to fail, so a consumer can test its
   error path as well as its happy one.
@@ -178,6 +180,11 @@ Tests run under Vitest, in two projects:
 
 A test opts into jsdom by its filename: `*.svelte.test.ts` or `*.dom.test.ts`.
 Everything else runs in node.
+
+A **module** that needs a document is named `*.dom.ts` for the same reason —
+`src/content/extract.dom.ts` is the one — so that its stem-matching test
+(`extract.dom.test.ts`) lands in the jsdom project and the TDD hook still
+finds it. The suffix is the marker: anything without it must run in node.
 
 Extension APIs are not mocked by hand. `browser.*` resolves to
 `@webext-core/fake-browser` in both projects, and its state is reset before
@@ -357,11 +364,52 @@ the result. The outstanding items are listed under **Not done, and why** in
 `docs/archive/04-ankiconnect-adapter.md`; that is the file to update as they
 are confirmed.
 
-### Not testable yet
+### 6. Capturing a selection
 
-The content script registers at runtime with no match patterns, so nothing
-injects it until M5 does. The context menu is the same — only its platform
-wrapper exists. Neither will appear in a browser before then.
+This is M5's path end to end, and it needs a real browser: the automated
+suite drives the extraction against jsdom fixtures and the gesture against
+fakes, but neither can prove that the browser hands over the gesture or that
+injection reaches the page.
+
+1. Open the background console first: `about:debugging#/runtime/this-firefox`
+   → **Anklipper** → **Inspect**. Development builds log every capture that
+   failed or hit a blind spot there, as `anklipper: capture`. That log is
+   what a capture doing nothing looks like from the inside.
+2. Open any ordinary article. Select a sentence inside a paragraph,
+   right-click, and choose **Create Anki Card**.
+3. The sidebar opens — or is already open, which is the common case after the
+   first card — and shows the selected text, the page title, and its address.
+   It watches the stored draft, so a second capture replaces what it shows
+   without being reopened.
+4. `Alt+Shift+A` does the same thing without the menu. Firefox lists it under
+   `about:addons` → the gear → **Manage Extension Shortcuts**, where it can
+   be rebound.
+
+If the panel stays on its first-run message, read the console log, and then
+check the store directly from that same console:
+
+```js
+await browser.storage.local.get("draft")
+```
+
+A draft there with an unchanged panel is a watching problem; an empty store
+is a capture that failed, and the log says why.
+
+Then check the blind spots, each of which should name itself in the sidebar
+rather than producing an empty card:
+
+- **A page with no content script.** Open a PDF in Firefox's built-in viewer,
+  select a line, and use the menu. Nothing can be injected there, so the
+  draft is built from the menu event's own text — shorter, and with no
+  surrounding context.
+- **A shadow root.** Any page built on web components will do. The selection
+  cannot be read, and the sidebar says so.
+- **A cross-origin frame.** Select text inside an embedded video's or
+  comment widget's frame.
+
+The extraction itself — the block ancestor, the heading, the caps, the
+whitespace handling — is covered by `src/content/extract.dom.test.ts` and
+does not need a browser.
 
 ## Plans and documentation
 

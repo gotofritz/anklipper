@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createContextMenus } from "./context-menus";
 
 type ClickListener = (
-  info: { menuItemId: string },
+  info: { menuItemId: string; selectionText?: string; pageUrl?: string },
   tab?: { id?: number },
 ) => void;
 
@@ -56,6 +56,31 @@ describe("context menus", () => {
     expect(onClick).toHaveBeenCalledWith({
       menuItemId: "create-anki-card",
       tabId: 7,
+    });
+  });
+
+  // 5.1 reads the page for the real capture, but the event's own text is the
+  // fallback when no content script can run there (5.4).
+  it("carries the event's own selection text and page url", () => {
+    const onClick = vi.fn();
+    createContextMenus().onClicked(onClick);
+
+    listeners.forEach((listener) =>
+      listener(
+        {
+          menuItemId: "create-anki-card",
+          selectionText: "Paris is the capital of France.",
+          pageUrl: "https://example.test/france",
+        },
+        { id: 7 },
+      ),
+    );
+
+    expect(onClick).toHaveBeenCalledWith({
+      menuItemId: "create-anki-card",
+      tabId: 7,
+      selectionText: "Paris is the capital of France.",
+      pageUrl: "https://example.test/france",
     });
   });
 

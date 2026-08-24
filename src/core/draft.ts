@@ -1,3 +1,4 @@
+import type { CaptureWarning } from "./capture";
 import { findMalformedCloze, stripCloze } from "./cloze";
 import type { NoteType, NoteTypeKind } from "./note-type";
 import { hasField, primaryFieldOf } from "./note-type";
@@ -20,12 +21,25 @@ export interface CardSource {
   readonly context: string;
   readonly url: string;
   readonly title: string;
+  /** The nearest heading above the selection, when the page had one (5.3). */
+  readonly heading?: string;
+  /**
+   * The selection's original markup. Fields carry plain text (5.2); this is
+   * kept so a later milestone can offer rich capture without re-extracting.
+   */
+  readonly html?: string;
 }
 
 /** Provenance, so a later AI generator is distinguishable from this one. */
 export interface GenerationMetadata {
   readonly name: string;
   readonly version: number;
+  /**
+   * What the capture could not read, or read only in part (5.4). Kept with
+   * the draft because the editor has to say so: a card silently missing its
+   * context is worse than one that names what is missing.
+   */
+  readonly warnings?: readonly CaptureWarning[];
 }
 
 export interface CardDraft {

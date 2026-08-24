@@ -18,7 +18,13 @@ export type SidebarErrorKind =
   /** Chrome's panel is scoped to a tab or a window, and neither was given. */
   | "no-target"
   /** The browser refused: no user gesture, or the window went away. */
-  | "open-failed";
+  | "open-failed"
+  /**
+   * The call never settled. Firefox's sidebar is already open for every
+   * capture after the first, and what `sidebarAction.open()` does then is
+   * not this extension's to rely on — so the caller stops waiting.
+   */
+  | "open-timed-out";
 
 export interface SidebarError {
   readonly kind: SidebarErrorKind;

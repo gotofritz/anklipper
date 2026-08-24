@@ -15,7 +15,8 @@ describes what it will do. There is nothing to download at the moment.
 ## What it does
 
 1. You select some text on a page.
-2. You right-click and choose **Create Anki Card**.
+2. You right-click and choose **Create Anki Card** — or press
+   **Alt+Shift+A**, which does the same thing.
 3. A panel opens at the side of your browser with the card already filled in.
 4. You change anything you like — the wording, the deck, the type of card,
    the tags.
@@ -23,6 +24,11 @@ describes what it will do. There is nothing to download at the moment.
 
 Anklipper also keeps a note of where the text came from, so a card can carry
 the page title and address alongside whatever you wrote.
+
+Some pages hide their text in a way no add-on can read — PDFs opened in the
+browser's own viewer are the common one. When that happens, Anklipper tells
+you what it could not read rather than quietly making a card with a piece
+missing.
 
 ## Before you start
 

@@ -11,6 +11,12 @@ export interface StoragePort {
   get<T>(key: string): Promise<T | undefined>;
   set<T>(key: string, value: T): Promise<void>;
   remove(key: string): Promise<void>;
+  /**
+   * Watch one key. This is how a context learns about a write it did not
+   * make: the sidebar persists per window on Firefox, so a capture usually
+   * happens while it is already open and has already read the draft once.
+   */
+  onChanged(key: string, listener: () => void): () => void;
 }
 
 export function createStorage(): StoragePort {
@@ -26,6 +32,17 @@ export function createStorage(): StoragePort {
 
     async remove(key: string): Promise<void> {
       await browser.storage.local.remove(key);
+    },
+
+    onChanged(key: string, listener: () => void): () => void {
+      // `storage.onChanged` with an area check rather than
+      // `storage.local.onChanged`: both browsers have the former, and only
+      // the local area is written here.
+      const wrapped = (changes: Record<string, unknown>, areaName: string) => {
+        if (areaName === "local" && key in changes) listener();
+      };
+      browser.storage.onChanged.addListener(wrapped);
+      return () => browser.storage.onChanged.removeListener(wrapped);
     },
   };
 }

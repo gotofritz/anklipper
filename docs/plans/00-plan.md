@@ -75,7 +75,7 @@ AnkiConnect interface precedes the editor that renders its data.
 | M2 | Extension skeleton: manifest, permissions, typed messaging, platform wrappers | M1 | done: `docs/archive/02-extension-skeleton.md` |
 | M3 | `CardDraft`, validation, cloze markup, deterministic generation, port interfaces and fakes | M2 | done: `docs/archive/03-card-draft-model-and-ports.md` |
 | M4 | AnkiConnect adapter and its error taxonomy, against mocked HTTP | M3 | `04-ankiconnect-adapter.md` |
-| M5 | Selection and page-context extraction; context menu and shortcut | M2, M3 | `05-selection-and-page-context.md` |
+| M5 | Selection and page-context extraction; context menu and shortcut | M2, M3 | done: `docs/archive/05-selection-and-page-context.md` |
 | M6 | Sidebar editor, built against the fake adapter | M3, M4 | `06-svelte-editor.md` |
 | M7 | End-to-end MVP, with the draft persisted from the moment it exists | M4, M5, M6 | `07-end-to-end-mvp.md` |
 | M8 | Settings, storage, and schema migration | M7 | `08-settings-and-persistence.md` |
@@ -93,8 +93,8 @@ Each settled in the subplan named; reversing one means editing that subplan.
 | Note-type switch: drop, remap, or positional? | Remap by field name; unmatched content stashed and restorable | M3, 3.2 |
 | Duplicate detection in the MVP? | Yes, via `canAddNotes`, non-blocking | M4, 4.4 |
 | Is the `requestPermission` handshake needed at all? | **No**, on Anki 25.09.4 — the extension reached AnkiConnect from an origin absent from `webCorsOriginList`. P9 reversed and the handshake removed | P9, M4 4.14–4.15 |
-| How much surrounding context? | Nearest block ancestor, capped at 1 000 chars; selection capped at 10 000 | M5, 5.3 |
-| Rich text or plain? | Plain on capture; rich in the editor from M10 | M5 5.2, M10 10.3 |
+| ~~How much surrounding context?~~ **settled at M5** | Nearest block ancestor, capped at 1 000 chars; selection capped at 10 000 | M5 5.3 |
+| ~~Rich text or plain?~~ **settled at M5** | Plain on capture, with the original HTML kept in `source.html`; rich in the editor from M10 | M5 5.2, M10 10.3 |
 | Which browser first? | Firefox; Chrome after the first release | P5, M9 9.5 |
 
 ## Deferred

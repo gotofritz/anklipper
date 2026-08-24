@@ -12,6 +12,13 @@ export interface ContextMenuItem {
 export interface ContextMenuClick {
   readonly menuItemId: string;
   readonly tabId?: number;
+  /**
+   * The browser's own copy of the selection: truncated, plain, and with no
+   * surroundings, so 5.1 re-reads the page instead. It is kept because it is
+   * the only text available when no content script can run there.
+   */
+  readonly selectionText?: string;
+  readonly pageUrl?: string;
 }
 
 /**
@@ -44,10 +51,21 @@ export function createContextMenus(): ContextMenusPort {
 
     onClicked(listener: (click: ContextMenuClick) => void): () => void {
       const wrapped = (
-        info: { menuItemId: string | number },
+        info: {
+          menuItemId: string | number;
+          selectionText?: string;
+          pageUrl?: string;
+        },
         tab?: { id?: number },
       ) => {
-        listener({ menuItemId: String(info.menuItemId), tabId: tab?.id });
+        listener({
+          menuItemId: String(info.menuItemId),
+          tabId: tab?.id,
+          ...(info.selectionText === undefined
+            ? {}
+            : { selectionText: info.selectionText }),
+          ...(info.pageUrl === undefined ? {} : { pageUrl: info.pageUrl }),
+        });
       };
       browser.contextMenus.onClicked.addListener(wrapped);
       return () => browser.contextMenus.onClicked.removeListener(wrapped);

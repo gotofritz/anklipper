@@ -1,3 +1,4 @@
+import type { PageCapture } from "./capture";
 import type { CardDraft, GenerationMetadata } from "./draft";
 import { createDraft } from "./draft";
 import type { NoteType } from "./note-type";
@@ -17,6 +18,8 @@ export interface PageContext {
   readonly surroundingText: string;
   readonly url: string;
   readonly title: string;
+  readonly heading?: string;
+  readonly html?: string;
 }
 
 export interface GenerationDefaults {
@@ -60,8 +63,42 @@ export function generateBasicCard(
       context: context.surroundingText,
       url: context.url,
       title: context.title,
+      ...(context.heading === undefined ? {} : { heading: context.heading }),
+      ...(context.html === undefined ? {} : { html: context.html }),
     },
     createdAt: now().toISOString(),
     generation: BASIC_GENERATOR,
   });
+}
+
+/**
+ * The M5 path: one capture off a page becomes a draft (5.1). The same
+ * generator as above — this only unpacks the capture into it, and carries the
+ * capture's warnings along so the editor can show what could not be read
+ * (5.4).
+ */
+export function generateFromCapture(
+  capture: PageCapture,
+  defaults: GenerationDefaults,
+  options: GenerationOptions = {},
+): CardDraft {
+  const draft = generateBasicCard(
+    { text: capture.text },
+    {
+      surroundingText: capture.context,
+      url: capture.url,
+      title: capture.title,
+      heading: capture.heading,
+      html: capture.html,
+    },
+    defaults,
+    options,
+  );
+
+  return capture.warnings.length === 0
+    ? draft
+    : {
+        ...draft,
+        generation: { ...draft.generation, warnings: capture.warnings },
+      };
 }

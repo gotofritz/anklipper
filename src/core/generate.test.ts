@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { BASIC, CLOZE } from "@/fixtures/note-types";
 
-import { BASIC_GENERATOR, generateBasicCard } from "./generate";
+import {
+  BASIC_GENERATOR,
+  generateBasicCard,
+  generateFromCapture,
+} from "./generate";
 import { validateDraft } from "./validate";
 
 const SELECTION = { text: "  Paris is the capital of France.  " };
@@ -78,5 +82,56 @@ describe("generateBasicCard", () => {
     const draft = generateBasicCard(SELECTION, CONTEXT, DEFAULTS);
 
     expect(Date.parse(draft.createdAt)).toBeGreaterThanOrEqual(before);
+  });
+});
+
+const CAPTURE = {
+  text: "Paris is the capital of France.",
+  html: "<b>Paris</b> is the capital of France.",
+  context: "France is a country in Europe. Paris is the capital of France.",
+  heading: "France",
+  title: "France — Example",
+  url: "https://example.test/france",
+  warnings: [],
+};
+
+describe("generateFromCapture", () => {
+  it("produces a draft that validates (M5, test 8)", () => {
+    const draft = generateFromCapture(CAPTURE, DEFAULTS, { now: AT });
+
+    expect(validateDraft(draft)).toEqual([]);
+    expect(draft.fields.Front).toBe("Paris is the capital of France.");
+  });
+
+  it("keeps the surrounding block, the heading, and the markup as source (5.2)", () => {
+    const draft = generateFromCapture(CAPTURE, DEFAULTS, { now: AT });
+
+    expect(draft.source).toEqual({
+      text: CAPTURE.text,
+      context: CAPTURE.context,
+      heading: "France",
+      html: CAPTURE.html,
+      url: CAPTURE.url,
+      title: CAPTURE.title,
+    });
+  });
+
+  // 5.4: a card silently missing its context is worse than one that says so.
+  it("carries the capture's warnings into the draft's generation metadata", () => {
+    const warnings = [
+      { kind: "shadow-dom", message: "the selection is inside a shadow root" },
+    ] as const;
+
+    const draft = generateFromCapture({ ...CAPTURE, warnings }, DEFAULTS, {
+      now: AT,
+    });
+
+    expect(draft.generation).toEqual({ ...BASIC_GENERATOR, warnings });
+  });
+
+  it("leaves the generator metadata alone when nothing went wrong", () => {
+    expect(
+      generateFromCapture(CAPTURE, DEFAULTS, { now: AT }).generation,
+    ).toEqual(BASIC_GENERATOR);
   });
 });
