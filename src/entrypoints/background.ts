@@ -1,4 +1,5 @@
 import { createDevHarness } from "@/anki/dev-harness";
+import type { CaptureReport } from "@/background/capture";
 import { startBackground } from "@/background/start";
 import { createCommands } from "@/platform/commands";
 import { createContextMenus } from "@/platform/context-menus";
@@ -25,6 +26,19 @@ export default defineBackground(() => {
     scripting: createScripting(),
     sidebar: createBrowserSidebar(),
     drafts: createStoredDrafts(createStorage()),
+    // What each capture did, in development only. The report carries kinds
+    // and our own messages — never the draft, the selection, or the page —
+    // so this stays inside the privacy rule; the DEV guard keeps it out of a
+    // release regardless.
+    ...(import.meta.env.DEV
+      ? {
+          report: (report: CaptureReport) => {
+            if (report.outcome === "failed" || report.warnings.length > 0) {
+              console.warn("anklipper: capture", report);
+            }
+          },
+        }
+      : {}),
   });
 
   // M4's manual checks need the adapter driven from a real extension origin,

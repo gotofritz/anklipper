@@ -371,13 +371,29 @@ suite drives the extraction against jsdom fixtures and the gesture against
 fakes, but neither can prove that the browser hands over the gesture or that
 injection reaches the page.
 
-1. Open any ordinary article. Select a sentence inside a paragraph,
+1. Open the background console first: `about:debugging#/runtime/this-firefox`
+   → **Anklipper** → **Inspect**. Development builds log every capture that
+   failed or hit a blind spot there, as `anklipper: capture`. That log is
+   what a capture doing nothing looks like from the inside.
+2. Open any ordinary article. Select a sentence inside a paragraph,
    right-click, and choose **Create Anki Card**.
-2. The sidebar opens — or is already open, which is the common case after the
+3. The sidebar opens — or is already open, which is the common case after the
    first card — and shows the selected text, the page title, and its address.
-3. `Alt+Shift+A` does the same thing without the menu. Firefox lists it under
+   It watches the stored draft, so a second capture replaces what it shows
+   without being reopened.
+4. `Alt+Shift+A` does the same thing without the menu. Firefox lists it under
    `about:addons` → the gear → **Manage Extension Shortcuts**, where it can
    be rebound.
+
+If the panel stays on its first-run message, read the console log, and then
+check the store directly from that same console:
+
+```js
+await browser.storage.local.get("draft")
+```
+
+A draft there with an unchanged panel is a watching problem; an empty store
+is a capture that failed, and the log says why.
 
 Then check the blind spots, each of which should name itself in the sidebar
 rather than producing an empty card:

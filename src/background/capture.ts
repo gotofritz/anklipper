@@ -1,4 +1,8 @@
-import type { CaptureWarning, PageCapture } from "@/core/capture";
+import type {
+  CaptureWarning,
+  CaptureWarningKind,
+  PageCapture,
+} from "@/core/capture";
 import { warn } from "@/core/capture";
 import type { CardDraft } from "@/core/draft";
 import type { GenerationDefaults } from "@/core/generate";
@@ -191,4 +195,33 @@ async function finish(
   }
 
   return ok({ draft, warnings: filled.warnings, sidebar });
+}
+
+/**
+ * What a capture is worth saying out loud (5.4).
+ *
+ * Deliberately not the draft: a report is for a console and for an issue, so
+ * it carries kinds and our own messages and no page content whatsoever. A
+ * test pins that.
+ */
+export interface CaptureReport {
+  readonly outcome: "captured" | "failed";
+  readonly failure?: CaptureFailure;
+  readonly warnings: readonly CaptureWarningKind[];
+  readonly sidebar?: SidebarError;
+}
+
+export function describeCapture(
+  result: Result<CaptureOutcome, CaptureFailure>,
+): CaptureReport {
+  if (!result.ok) {
+    return { outcome: "failed", failure: result.error, warnings: [] };
+  }
+
+  const { warnings, sidebar } = result.value;
+  return {
+    outcome: "captured",
+    warnings: warnings.map((warning) => warning.kind),
+    ...(sidebar.ok ? {} : { sidebar: sidebar.error }),
+  };
 }

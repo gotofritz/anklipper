@@ -36,6 +36,18 @@ function isDraft(value: unknown): value is CardDraft {
   );
 }
 
+/**
+ * Watch for a draft written by another context. The sidebar reads the draft
+ * on mount, and on Firefox it is usually already open when the next capture
+ * happens — so without this it would show the previous card indefinitely.
+ */
+export function watchDraft(
+  storage: StoragePort,
+  listener: () => void,
+): () => void {
+  return storage.onChanged(DRAFT_KEY, listener);
+}
+
 export function createStoredDrafts(storage: StoragePort): DraftStore {
   return {
     async load(): Promise<Result<CardDraft | undefined, DraftStoreError>> {

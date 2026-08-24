@@ -250,6 +250,19 @@ sidebar reads it back out with `get-draft` — the two finish in no fixed
 order, and the background is unloaded when idle, so nothing is held in memory
 between them.
 
+**The sidebar re-reads on every capture, not only on mount.** Firefox's
+sidebar persists per window, so after the first card it is already open when
+the next gesture happens. It watches the draft key through
+`StoragePort.onChanged` and pulls again; reading once on mount would leave it
+showing the previous card. Pushing a draft into a live sidebar is still 7.4's.
+
+**A capture reports what it did.** `describeCapture` reduces the result to
+kinds, our own messages, and the sidebar's error — never the draft, the
+selection, or the page — and the background hands that to an optional
+reporter. A failed capture stores nothing, so without it the failure reaches
+the user as a sidebar that appears to do nothing. Development builds log it;
+production wires no reporter.
+
 **Nothing is injected at page load.** The content script is registered with no
 match patterns; a tab with none answers `no-receiver`, which buys exactly one
 `scripting.executeScript` and one retry.

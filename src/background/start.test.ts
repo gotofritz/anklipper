@@ -8,6 +8,7 @@ import type { ContextMenuClick } from "@/platform/context-menus";
 import type { CommandInvocation } from "@/platform/commands";
 import { createFakeRuntimeMessaging } from "@/platform/fakes/fake-runtime-messaging";
 
+import type { CaptureReport } from "./capture";
 import { CAPTURE_COMMAND, CAPTURE_MENU_ITEM, startBackground } from "./start";
 
 const CAPTURE: PageCapture = {
@@ -134,6 +135,20 @@ describe("background", () => {
     });
   });
 
+  // Both browsers require `sidebar.open` inside the gesture's own task. The
+  // capture module holds that line; this holds the wiring in front of it,
+  // where an `await` would be easy to add and impossible to typecheck.
+  it("opens the sidebar synchronously, inside the click", () => {
+    const { deps, clicks } = harness();
+    startBackground(deps);
+
+    clicks.forEach((click) =>
+      click({ menuItemId: CAPTURE_MENU_ITEM, tabId: 7 }),
+    );
+
+    expect(deps.sidebar.open).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores a click on somebody else's menu entry", async () => {
     const { deps, clicks } = harness();
     startBackground(deps);
@@ -188,5 +203,69 @@ describe("background", () => {
     const reply = await createMessenger(transport).send({ type: "get-draft" });
 
     expect(reply).toEqual({ ok: true, value: { draft: undefined } });
+  });
+});
+
+// A capture that fails has nowhere else to surface: nothing is stored, so the
+// panel shows the first-run message and the user is told nothing. Discarding
+// the Result here is the silent-swallow the failure policy forbids.
+describe("reporting what a capture did", () => {
+  it("reports a capture that failed, and why", async () => {
+    const reports: CaptureReport[] = [];
+    const { deps, clicks } = harness({
+      scripting: {
+        inject: vi.fn(async () => ({
+          ok: false as const,
+          error: {
+            kind: "not-injectable" as const,
+            message: "cannot access about:reader",
+          },
+        })),
+      },
+      report: (report: CaptureReport) => reports.push(report),
+    });
+    // A tab with no content script, and a menu event carrying no text either.
+    const transport = deps.messaging as ReturnType<
+      typeof createFakeRuntimeMessaging
+    >;
+    transport.connectTab(7, async () => undefined);
+
+    startBackground(deps);
+    clicks.forEach((click) =>
+      click({ menuItemId: CAPTURE_MENU_ITEM, tabId: 99 }),
+    );
+
+    await vi.waitFor(() => expect(reports).toHaveLength(1));
+    expect(reports[0]?.outcome).toBe("failed");
+    expect(reports[0]?.failure?.kind).toBe("nothing-captured");
+  });
+
+  it("reports a capture that worked", async () => {
+    const reports: CaptureReport[] = [];
+    const { deps, clicks } = harness({
+      report: (report: CaptureReport) => reports.push(report),
+    });
+    startBackground(deps);
+
+    clicks.forEach((click) =>
+      click({ menuItemId: CAPTURE_MENU_ITEM, tabId: 7 }),
+    );
+
+    await vi.waitFor(() => expect(reports).toHaveLength(1));
+    expect(reports[0]).toEqual({ outcome: "captured", warnings: [] });
+  });
+
+  it("captures fine with nobody listening for reports", async () => {
+    const { deps, clicks } = harness();
+    startBackground(deps);
+
+    clicks.forEach((click) =>
+      click({ menuItemId: CAPTURE_MENU_ITEM, tabId: 7 }),
+    );
+
+    await vi.waitFor(async () => {
+      const stored = await deps.drafts.load();
+      expect(stored.ok && stored.value).toBeDefined();
+    });
   });
 });

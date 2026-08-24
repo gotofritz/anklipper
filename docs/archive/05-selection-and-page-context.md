@@ -38,11 +38,26 @@ characters and dropped with a warning past it — the plan caps the text but
 the markup crosses the same message boundary. The climb for a block ancestor
 with text is bounded at eight hops, per the plan's own risk note.
 
+**The panel watches the draft key.** Found by the first manual pass: with the
+sidebar already open — the common case, since Firefox's is per window — the
+panel read the draft once on mount and never again, so a capture looked like
+it did nothing. `StoragePort` gained `onChanged`, and the panel re-reads on
+it. Pushing a draft into a live sidebar is still 7.4's; this is the pull side
+of the same problem, and M5's own "done when" cannot be met without it.
+
+**Capture failures are reported.** Also from that pass: `startBackground`
+discarded the capture's `Result`, which is the silent swallow the failure
+policy forbids — on a page with no content script and no selection text,
+nothing was stored and nothing was said. `describeCapture` reduces a result
+to kinds and our own messages, carrying no page content, and the background
+hands it to an optional reporter that development builds log.
+
 **Not done, and why.** The "done when" clause about a real browser is the one
 item left open: the automated suite covers extraction against jsdom fixtures
 and the gesture against fakes, and the manual pass is written up in the
 developer guide under *Checking it in Firefox → 6. Capturing a selection*.
-Nothing in it has been run against a real Firefox yet.
+Its first two steps have now been run against a real Firefox — which is where
+the two fixes above came from — and the blind-spot checks have not.
 
 ---
 

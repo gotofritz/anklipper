@@ -8,9 +8,12 @@
   const {
     connect,
     loadDraft,
+    subscribe,
   }: {
     connect: () => Promise<SidebarStatus>;
     loadDraft: () => Promise<DraftStatus>;
+    /** Told when a capture stores a new draft; returns its own disposer. */
+    subscribe: (onChange: () => void) => () => void;
   } = $props();
 
   let status = $state<SidebarStatus>({ kind: "connecting" });
@@ -26,13 +29,24 @@
     };
   });
 
+  // Read once on mount, then again on every capture: Firefox's sidebar
+  // persists per window, so it is usually already open when the next card is
+  // made, and reading only on mount would leave it showing the previous one.
   $effect(() => {
     let current = true;
-    void loadDraft().then((next) => {
-      if (current) capture = next;
-    });
+
+    const read = () => {
+      void loadDraft().then((next) => {
+        if (current) capture = next;
+      });
+    };
+
+    read();
+    const stop = subscribe(read);
+
     return () => {
       current = false;
+      stop();
     };
   });
 

@@ -8,8 +8,8 @@ import type { RuntimeMessagingPort } from "@/platform/runtime-messaging";
 import type { ScriptingPort } from "@/platform/scripting";
 import type { SidebarPort } from "@/platform/sidebar";
 
-import type { CaptureTrigger } from "./capture";
-import { captureFromGesture } from "./capture";
+import type { CaptureReport, CaptureTrigger } from "./capture";
+import { captureFromGesture, describeCapture } from "./capture";
 
 /** The context-menu entry, and the `commands` key its shortcut is declared under. */
 export const CAPTURE_MENU_ITEM = "create-anki-card";
@@ -25,6 +25,12 @@ export interface BackgroundDeps {
   readonly drafts: DraftStore;
   readonly defaults?: GenerationDefaults;
   readonly now?: () => Date;
+  /**
+   * Told what each capture did (5.4). A failed capture stores nothing, so
+   * without this it reaches the user as a sidebar that appears to do nothing.
+   * The report carries no page content — see `describeCapture`.
+   */
+  readonly report?: (report: CaptureReport) => void;
 }
 
 /**
@@ -49,8 +55,8 @@ export function startBackground(deps: BackgroundDeps): () => void {
     return { draft: stored.ok ? stored.value : undefined };
   });
 
-  const capture = (trigger: CaptureTrigger) =>
-    captureFromGesture(trigger, {
+  const capture = async (trigger: CaptureTrigger) => {
+    const result = await captureFromGesture(trigger, {
       messenger,
       scripting: deps.scripting,
       sidebar: deps.sidebar,
@@ -58,6 +64,9 @@ export function startBackground(deps: BackgroundDeps): () => void {
       ...(deps.defaults === undefined ? {} : { defaults: deps.defaults }),
       ...(deps.now === undefined ? {} : { now: deps.now }),
     });
+
+    deps.report?.(describeCapture(result));
+  };
 
   // Not awaited: the click handler has to reach `sidebar.open` inside the
   // gesture's own task, and the menu API does not wait for this promise.

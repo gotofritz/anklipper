@@ -1,5 +1,5 @@
 import { browser } from "wxt/browser";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createStorage } from "./storage";
 
@@ -31,5 +31,51 @@ describe("storage", () => {
     await expect(browser.storage.local.get("deck")).resolves.toEqual({
       deck: "Default",
     });
+  });
+});
+
+// The sidebar has to notice a draft written by a gesture while it was already
+// open: it persists per window on Firefox, so that is the common case after
+// the first card.
+describe("storage changes", () => {
+  it("tells a watcher when its key is written", async () => {
+    const storage = createStorage();
+    const changed = vi.fn();
+    storage.onChanged("draft", changed);
+
+    await storage.set("draft", { deck: "Default" });
+
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores writes to other keys", async () => {
+    const storage = createStorage();
+    const changed = vi.fn();
+    storage.onChanged("draft", changed);
+
+    await storage.set("settings", { defaultDeck: "Default" });
+
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it("tells a watcher when its key is removed", async () => {
+    const storage = createStorage();
+    await storage.set("draft", { deck: "Default" });
+    const changed = vi.fn();
+    storage.onChanged("draft", changed);
+
+    await storage.remove("draft");
+
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops telling it once the subscription is disposed", async () => {
+    const storage = createStorage();
+    const changed = vi.fn();
+
+    storage.onChanged("draft", changed)();
+    await storage.set("draft", { deck: "Default" });
+
+    expect(changed).not.toHaveBeenCalled();
   });
 });

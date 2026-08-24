@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createDraft } from "@/core/draft";
 import { BASIC } from "@/fixtures/note-types";
 
-import { DRAFT_KEY, createStoredDrafts } from "./draft-store";
+import { DRAFT_KEY, createStoredDrafts, watchDraft } from "./draft-store";
 import type { StoragePort } from "./storage";
 
 const DRAFT = createDraft({
@@ -35,6 +35,9 @@ function fakeStorage(initial: Record<string, unknown> = {}): StoragePort & {
     },
     async remove(key: string): Promise<void> {
       delete written[key];
+    },
+    onChanged(): () => void {
+      return () => {};
     },
   };
 }
@@ -88,6 +91,20 @@ describe("stored drafts", () => {
 
     expect(saved.ok === false && saved.error.kind).toBe("write-failed");
     expect(saved.ok === false && saved.error.message).toContain("quota");
+  });
+
+  // What the sidebar subscribes to when it is already open (M5).
+  it("watches the key the draft is stored under", () => {
+    const watched: string[] = [];
+    const storage = fakeStorage();
+    storage.onChanged = (key: string) => {
+      watched.push(key);
+      return () => {};
+    };
+
+    watchDraft(storage, () => {});
+
+    expect(watched).toEqual([DRAFT_KEY]);
   });
 
   it("reports a storage read that threw", async () => {

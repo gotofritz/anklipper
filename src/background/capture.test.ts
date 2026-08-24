@@ -8,7 +8,7 @@ import { createFakeRuntimeMessaging } from "@/platform/fakes/fake-runtime-messag
 import type { ScriptingPort } from "@/platform/scripting";
 import type { SidebarPort } from "@/platform/sidebar";
 
-import { captureFromGesture } from "./capture";
+import { captureFromGesture, describeCapture } from "./capture";
 
 const CAPTURE: PageCapture = {
   text: "Paris is the capital of France.",
@@ -229,5 +229,66 @@ describe("captureFromGesture", () => {
     expect(result.ok && result.value.draft.fields.Front).toBe(
       "Paris is the capital of France.",
     );
+  });
+});
+
+describe("describeCapture", () => {
+  it("reduces a failure to its kind and message", () => {
+    expect(
+      describeCapture({
+        ok: false,
+        error: { kind: "nothing-captured", message: "no content script" },
+      }),
+    ).toEqual({
+      outcome: "failed",
+      failure: { kind: "nothing-captured", message: "no content script" },
+      warnings: [],
+    });
+  });
+
+  it("reports a success as the blind spots it hit, if any", async () => {
+    const result = await captureFromGesture(
+      { tabId: 7 },
+      deps({
+        messenger: createMessenger(
+          pageThatAnswers({
+            ...CAPTURE,
+            warnings: [{ kind: "context-truncated", message: "too long" }],
+          }),
+        ),
+      }),
+    );
+
+    expect(describeCapture(result)).toEqual({
+      outcome: "captured",
+      warnings: ["context-truncated"],
+    });
+  });
+
+  it("reports a sidebar that would not open", async () => {
+    const result = await captureFromGesture(
+      { tabId: 7 },
+      deps({
+        sidebar: {
+          open: vi.fn(async () => ({
+            ok: false as const,
+            error: { kind: "open-failed" as const, message: "no user gesture" },
+          })),
+        },
+      }),
+    );
+
+    expect(describeCapture(result).sidebar).toEqual({
+      kind: "open-failed",
+      message: "no user gesture",
+    });
+  });
+
+  // Privacy: a report is for a console and an issue, so page content must not
+  // be reachable from it at all — not the draft, not the selection.
+  it("carries no page content", async () => {
+    const result = await captureFromGesture({ tabId: 7 }, deps());
+
+    expect(JSON.stringify(describeCapture(result))).not.toContain("Paris");
   });
 });
