@@ -87,7 +87,12 @@ export function findMalformedCloze(text: string): ClozeIssue | undefined {
   return undefined;
 }
 
-function nextOrdinal(deletions: readonly ClozeDeletion[]): number {
+/**
+ * The ordinal a new deletion takes: one past the highest in use (3.9). Public
+ * because the editor labels its control with it, and a UI deriving `max + 1`
+ * for itself would put the rule in two places.
+ */
+export function nextClozeOrdinal(deletions: readonly ClozeDeletion[]): number {
   return (
     deletions.reduce((highest, one) => Math.max(highest, one.ordinal), 0) + 1
   );
@@ -174,7 +179,7 @@ export function addDeletion(
     });
   }
 
-  const ordinal = request.ordinal ?? nextOrdinal(existing);
+  const ordinal = request.ordinal ?? nextClozeOrdinal(existing);
   const answer = text.slice(start, end);
   const marked =
     text.slice(0, start) +

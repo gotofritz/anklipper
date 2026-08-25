@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   addDeletion,
   findMalformedCloze,
+  nextClozeOrdinal,
   parseCloze,
   removeDeletionAt,
   removeDeletionsByOrdinal,
@@ -225,5 +226,22 @@ describe("stripCloze", () => {
 describe("addDeletion result shape", () => {
   it("succeeds with a Result rather than throwing", () => {
     expect(isOk(addDeletion("Paris", { start: 0, end: 5 }))).toBe(true);
+  });
+});
+
+// The editor labels its "new deletion" control with the ordinal the next mark
+// will take (3.9), so the rule has to be readable from outside rather than
+// re-derived in a dropdown.
+describe("nextClozeOrdinal", () => {
+  it("starts at 1 on a field with no deletions", () => {
+    expect(nextClozeOrdinal(parseCloze("plain text"))).toBe(1);
+  });
+
+  it("takes one past the highest ordinal, gaps and all", () => {
+    expect(nextClozeOrdinal(parseCloze("{{c1::a}} and {{c4::b}}"))).toBe(5);
+  });
+
+  it("counts a grouped ordinal once", () => {
+    expect(nextClozeOrdinal(parseCloze("{{c2::a}} and {{c2::b}}"))).toBe(3);
   });
 });

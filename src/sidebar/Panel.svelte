@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { primaryFieldOf } from "@/core/note-type";
+  import type { AnkiClient } from "@/core/ports/types";
 
+  import CardEditor from "./CardEditor.svelte";
   import type { DraftStatus, SidebarStatus } from "./connect";
 
   // The panel is handed its reads rather than building them, so it stays free
@@ -9,11 +10,16 @@
     connect,
     loadDraft,
     subscribe,
+    anki,
+    onCancel,
   }: {
     connect: () => Promise<SidebarStatus>;
     loadDraft: () => Promise<DraftStatus>;
     /** Told when a capture stores a new draft; returns its own disposer. */
     subscribe: (onChange: () => void) => () => void;
+    /** The port the editor is built against — the adapter, or M3's fake. */
+    anki: AnkiClient;
+    onCancel?: () => void;
   } = $props();
 
   let status = $state<SidebarStatus>({ kind: "connecting" });
@@ -61,17 +67,6 @@
   const draft = $derived(
     capture.kind === "captured" ? capture.draft : undefined,
   );
-
-  // The editor is M6's; until then the panel shows what was captured, which is
-  // what proves the whole path from the gesture to the draft.
-  const captured = $derived.by(() => {
-    if (draft === undefined) return "";
-    const primary = primaryFieldOf(draft.noteType);
-    return primary === undefined ? "" : (draft.fields[primary] ?? "");
-  });
-
-  // 5.4: what could not be read is named, never quietly dropped.
-  const warnings = $derived(draft?.generation.warnings ?? []);
 </script>
 
 <main>
@@ -79,20 +74,14 @@
   <p role="status">{label}</p>
 
   {#if capture.kind === "captured" && draft !== undefined}
-    <section aria-label="Captured card">
-      <blockquote>{captured}</blockquote>
-      <p>
-        <cite>{draft.source.title}</cite>
-        <a href={draft.source.url}>{draft.source.url}</a>
-      </p>
-      {#if warnings.length > 0}
-        <ul aria-label="What could not be captured">
-          {#each warnings as warning (warning.kind)}
-            <li>{warning.message}</li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
+    <!--
+      Keyed on the draft: a capture while the sidebar is open replaces it, and
+      the editor holds the draft from the moment it is built, so it is
+      remounted rather than left editing the previous card.
+    -->
+    {#key draft}
+      <CardEditor {anki} {draft} {onCancel} />
+    {/key}
   {:else if capture.kind === "unavailable"}
     <p>The draft could not be read — {capture.reason}</p>
   {:else if capture.kind === "empty"}

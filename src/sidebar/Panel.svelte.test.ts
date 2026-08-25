@@ -3,12 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { CaptureWarning } from "@/core/capture";
 import { createDraft } from "@/core/draft";
+import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
 import { BASIC } from "@/fixtures/note-types";
 
 import Panel from "./Panel.svelte";
 import type { DraftStatus, SidebarStatus } from "./connect";
 
 const never = () => new Promise<SidebarStatus>(() => {});
+/** The panel always has a client now; what it answers only matters per case. */
+const client = () =>
+  createFakeAnkiClient({ decks: ["Geography"], noteTypes: [BASIC] });
 const noDraft = async (): Promise<DraftStatus> => ({ kind: "empty" });
 /** No capture happens while the panel is mounted, in most of these cases. */
 const noChanges = () => () => {};
@@ -35,7 +39,12 @@ function draftWith(warnings?: readonly CaptureWarning[]) {
 
 describe("sidebar panel", () => {
   it("names the extension", () => {
-    render(Panel, { connect: never, loadDraft: noDraft, subscribe: noChanges });
+    render(Panel, {
+      connect: never,
+      loadDraft: noDraft,
+      subscribe: noChanges,
+      anki: client(),
+    });
 
     expect(
       screen.getByRole("heading", { name: "Anklipper" }),
@@ -43,7 +52,12 @@ describe("sidebar panel", () => {
   });
 
   it("says it is connecting while the background has not answered", () => {
-    render(Panel, { connect: never, loadDraft: noDraft, subscribe: noChanges });
+    render(Panel, {
+      connect: never,
+      loadDraft: noDraft,
+      subscribe: noChanges,
+      anki: client(),
+    });
 
     expect(screen.getByRole("status")).toHaveTextContent(/connecting/i);
   });
@@ -53,6 +67,7 @@ describe("sidebar panel", () => {
       connect: async () => ({ kind: "connected", from: "background" }),
       loadDraft: noDraft,
       subscribe: noChanges,
+      anki: client(),
     });
 
     expect(await screen.findByRole("status")).toHaveTextContent(/background/i);
@@ -63,6 +78,7 @@ describe("sidebar panel", () => {
       connect: async () => ({ kind: "unavailable", reason: "no-receiver" }),
       loadDraft: noDraft,
       subscribe: noChanges,
+      anki: client(),
     });
 
     expect(await screen.findByRole("status")).toHaveTextContent(/no-receiver/);
@@ -71,24 +87,33 @@ describe("sidebar panel", () => {
 
 describe("the captured draft", () => {
   it("says nothing has been captured yet", async () => {
-    render(Panel, { connect: never, loadDraft: noDraft, subscribe: noChanges });
+    render(Panel, {
+      connect: never,
+      loadDraft: noDraft,
+      subscribe: noChanges,
+      anki: client(),
+    });
 
     expect(
       await screen.findByText(/select some text.*create anki card/i),
     ).toBeInTheDocument();
   });
 
-  it("shows the captured text and where it came from", async () => {
+  it("opens the captured draft in the editor", async () => {
     render(Panel, {
       connect: never,
       loadDraft: async () => ({ kind: "captured", draft: draftWith() }),
       subscribe: noChanges,
+      anki: client(),
     });
 
-    expect(
-      await screen.findByText("Paris is the capital of France."),
-    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Front")).toHaveValue(
+      "Paris is the capital of France.",
+    );
     expect(screen.getByText("France — Example")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /add card/i }),
+    ).toBeInTheDocument();
   });
 
   // 5.4: a card silently missing its context is worse than one that says so.
@@ -105,6 +130,7 @@ describe("the captured draft", () => {
         ]),
       }),
       subscribe: noChanges,
+      anki: client(),
     });
 
     expect(
@@ -120,6 +146,7 @@ describe("the captured draft", () => {
         reason: "no-receiver: nothing is listening",
       }),
       subscribe: noChanges,
+      anki: client(),
     });
 
     expect(await screen.findByText(/nothing is listening/)).toBeInTheDocument();
@@ -141,6 +168,7 @@ describe("a capture while the panel is open", () => {
         notify = onChange;
         return () => {};
       },
+      anki: client(),
     });
     expect(
       await screen.findByText(/select some text.*create anki card/i),
@@ -149,9 +177,9 @@ describe("a capture while the panel is open", () => {
     status = { kind: "captured", draft: draftWith() };
     notify();
 
-    expect(
-      await screen.findByText("Paris is the capital of France."),
-    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Front")).toHaveValue(
+      "Paris is the capital of France.",
+    );
   });
 
   it("stops watching once it is unmounted", () => {
@@ -161,6 +189,7 @@ describe("a capture while the panel is open", () => {
       connect: never,
       loadDraft: noDraft,
       subscribe: () => dispose,
+      anki: client(),
     });
     unmount();
 

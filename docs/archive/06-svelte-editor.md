@@ -1,5 +1,71 @@
 # M6 — Svelte editor
 
+## As built
+
+Shipped as planned: 6.1–6.7 all hold. The editor renders a draft, edits every
+part of it, and submits through the `AnkiClient` port — in these tests M3's
+in-memory fake. No component imports the AnkiConnect adapter or `browser.*`.
+What differs from the text below, and why:
+
+**The view-model is a Svelte rune module.** 6.2 asks for one layer between
+components and ports, and that layer owns the loading and error state, so it
+needs somewhere to keep it. `src/sidebar/editor-model.svelte.ts` is compiled
+by the Svelte plugin, which is what makes `$state` work outside a component;
+the components then hold no state of their own beyond the text in a tag box
+and which ordinal a dropdown is on. The draft is `$state.raw`, because it is
+an immutable value replaced whole on every transition (3.3) — a deep proxy
+would cost something, buy nothing, and hand the port a proxy instead of the
+draft. The module's tests run in the jsdom project: they need the compiler,
+not a document. Convention recorded in the developer guide.
+
+**`nextClozeOrdinal` is now exported from the card model.** The control has to
+name the ordinal a new deletion would take — "a new deletion (c3)" — and
+deriving `max + 1` in a dropdown is precisely the duplication 6.1 exists to
+prevent. The rule stays in `cloze.ts`; only its visibility changed.
+
+**Error copy covers three taxonomies, not one.** The plan's risk names M4's
+`AnkiError`. The same argument applies to M3's `DraftIssue` and `ClozeIssue`,
+which are what a field error and a refused mark actually render, so
+`src/sidebar/error-copy.ts` holds all three. Each table is keyed by its own
+union, so a cause added below without copy here is a type error rather than a
+silent "something went wrong".
+
+**No note-type conversion.** The deliverable is the field set re-rendering per
+3.2, which is what the dropdown does. 3.12's `convertToCloze` /
+`convertFromCloze` are an explicit user action and have no control here: the
+cloze flow works without one, because a draft generated into a cloze note type
+lands the selection in `Text` already. M7's flow (its test 1a) is where the
+conversion gets its affordance.
+
+**The sidebar entrypoint builds the adapter, which the plan calls M7's.** The
+editor was first delivered behind an optional `anki` prop, leaving
+`App.svelte` unwired to respect the non-goal — and the result was a milestone
+whose UI could not be looked at in a development build. An editor nobody can
+open is not shipped, so `App.svelte` now composes `createAnkiClient` over the
+runtime origin (P8) and the host-permission check, and `Panel` requires the
+port. M5's read-only capture summary is gone with it. What is still M7's: the
+draft persisted from the moment it exists (7.1), retry (7.5), restore-on-open,
+and deck and note-type defaults — this is the client and nothing else.
+
+The prop is required rather than optional on purpose: `svelte-check` reports
+`Property 'anki' is missing … but required` if the editor is ever left
+unmounted again, so CI catches this class of mistake instead of a person
+noticing the sidebar looks unchanged.
+
+**The narrow-width criterion is CSS plus a manual check, not a test.** jsdom
+has no layout engine: `offsetWidth` is always 0, so "no horizontal scrolling
+at 300px" cannot be asserted there, and the plan's "tested at a narrow width"
+is not something this harness can do. What the editor has instead is one
+column, no fixed widths, `box-sizing: border-box` and `overflow-wrap: anywhere`
+throughout, and every control set to `min-width: 0` so a flex row may shrink.
+The visual pass is step 7 of the developer guide's Firefox checklist, runnable
+now that the editor is mounted.
+
+**A cloze hint sits above the controls.** Anki's own `Ctrl+Shift+C` marks the
+selection, and the plan asks for "a keyboard shortcut for the common case"
+without saying it has to be discoverable; a shortcut nobody is told about is
+one nobody uses.
+
 Index: `00-plan.md`. Depends on: M3 (ports), M4 (data shapes). Blocks: M7.
 
 ## Goal
