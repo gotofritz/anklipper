@@ -706,7 +706,7 @@ in-memory fake rather than a running Anki.
 | `Panel.svelte` | The shell: connection status, and the editor once there is a client to build it against. |
 | `editor-model.svelte.ts` | The view-model — the draft, the asynchronous state, and every intent. |
 | `CardEditor.svelte` | The form: landing area, pickers, toolbar, fields, tags, source, warnings, actions. |
-| `LandingArea.svelte` | The captured text, and the buttons that send runs of it into fields (10a). |
+| `LandingArea.svelte` | The captured text, and the control that sends runs of it into a field (10a). |
 | `Picker.svelte` | A name chosen out of a list, with a filter over it (M10). |
 | `FieldEditor.svelte` | One field: the rich input, its HTML source view, and its pin (M10). |
 | `FormatToolbar.svelte` | Anki's formatting buttons, and the cloze controls with them (M10). |
@@ -810,6 +810,11 @@ the button is pressed the focus is in the landing area and the field's own
 selection is gone; a field never focused takes the text on its end. Nothing
 selected in the landing area sends all of it — wanting the lot is the common
 case, and refusing would be an error message for something a button can do.
+The destination is a menu rather than a button per field: a note type with
+eight fields is eight buttons wide in a sidebar a third of a window across,
+and a menu is one control however many there are. A choice the next note type
+does not have falls back to its first field, since a name no longer in the
+field set would send nowhere.
 
 **Tag completion comes from the collection** (10.9), through a `<datalist>` —
 which completes, filters as the user types, is reachable from the keyboard,

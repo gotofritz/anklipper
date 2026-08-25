@@ -707,9 +707,10 @@ describe("10. the landing area survives the note type", () => {
       const at = landing().value.indexOf(text);
       landing().setSelectionRange(at, at + text.length);
     }
-    await fireEvent.click(
-      screen.getByRole("button", { name: new RegExp(`send to ${field}`, "i") }),
-    );
+    await fireEvent.change(screen.getByLabelText(/send to/i), {
+      target: { value: field },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
   }
 
   it("holds the capture from the moment the sidebar opens", async () => {

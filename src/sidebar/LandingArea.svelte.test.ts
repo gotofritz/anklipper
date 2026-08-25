@@ -32,9 +32,10 @@ function select(text: string) {
 }
 
 async function sendTo(field: string) {
-  await fireEvent.click(
-    screen.getByRole("button", { name: new RegExp(`send to ${field}`, "i") }),
-  );
+  await fireEvent.change(screen.getByLabelText(/send to/i), {
+    target: { value: field },
+  });
+  await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
 }
 
 describe("1. the box itself", () => {
@@ -54,15 +55,24 @@ describe("1. the box itself", () => {
 });
 
 describe("2. sending a run of it into a field (10a.2)", () => {
-  it("offers one button per field of the note type", () => {
+  it("offers every field of the note type as a destination", () => {
     renderLanding();
 
     expect(
-      screen.getByRole("button", { name: /send to front/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /send to back/i }),
-    ).toBeInTheDocument();
+      screen
+        .getAllByRole("option")
+        .map((one) => (one as HTMLOptionElement).value),
+    ).toEqual(["Front", "Back"]);
+  });
+
+  // A note type with eight fields is eight buttons wide in a sidebar a third
+  // of a window across; a menu is one control however many there are.
+  it("starts on the note type's first field", async () => {
+    const { onSend } = renderLanding();
+
+    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(onSend).toHaveBeenCalledWith("Front", TEXT, false);
   });
 
   it("sends what is selected", async () => {
@@ -84,17 +94,41 @@ describe("2. sending a run of it into a field (10a.2)", () => {
     expect(onSend).toHaveBeenCalledWith("Back", TEXT, false);
   });
 
-  it("re-renders its buttons when the note type changes", async () => {
+  it("offers the new field set when the note type changes", async () => {
     const { rerender } = renderLanding();
 
     await rerender({ fields: ["Text", "Back Extra"] });
 
     expect(
-      screen.getByRole("button", { name: /send to text/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /send to front/i }),
-    ).not.toBeInTheDocument();
+      screen
+        .getAllByRole("option")
+        .map((one) => (one as HTMLOptionElement).value),
+    ).toEqual(["Text", "Back Extra"]);
+  });
+
+  // A chosen field that the new note type does not have would send nowhere.
+  it("falls back to the first field when the chosen one is gone", async () => {
+    const { onSend, rerender } = renderLanding();
+
+    await fireEvent.change(screen.getByLabelText(/send to/i), {
+      target: { value: "Back" },
+    });
+    await rerender({ fields: ["Text", "Back Extra"] });
+    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(onSend).toHaveBeenCalledWith("Text", TEXT, false);
+  });
+
+  it("keeps the chosen field when the note type still has it", async () => {
+    const { onSend, rerender } = renderLanding();
+
+    await fireEvent.change(screen.getByLabelText(/send to/i), {
+      target: { value: "Back" },
+    });
+    await rerender({ fields: ["Front", "Back", "Extra"] });
+    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(onSend).toHaveBeenCalledWith("Back", TEXT, false);
   });
 });
 
@@ -121,7 +155,7 @@ describe("4. reachable and labelled", () => {
     const { container } = renderLanding();
 
     for (const control of container.querySelectorAll(
-      "textarea, input, button",
+      "textarea, input, select, button",
     )) {
       expect(control, control.outerHTML).toHaveAccessibleName();
       expect(control.getAttribute("tabindex")).not.toBe("-1");

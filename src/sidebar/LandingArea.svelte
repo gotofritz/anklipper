@@ -35,10 +35,22 @@
    * cleaner result, and the one that needs to be asked for.
    */
   let replace = $state(false);
+  /**
+   * Which field the next send goes to. Held as the user's choice, but read
+   * through `target`, which falls back to the note type's first field: a note
+   * type change replaces the field set entirely, and a chosen name that is no
+   * longer one of them would send nowhere.
+   */
+  let chosen = $state<string | undefined>(undefined);
 
-  function send(field: string) {
+  const target = $derived(
+    chosen !== undefined && fields.includes(chosen) ? chosen : fields[0],
+  );
+
+  function send() {
     const node = box;
-    if (node === undefined) return;
+    const field = target;
+    if (node === undefined || field === undefined) return;
 
     // Nothing selected means the whole box. Wanting all of it is the common
     // case, and refusing would be an error message for something a button can
@@ -69,11 +81,18 @@
   </p>
 
   <div class="row">
-    {#each fields as field (field)}
-      <button type="button" onclick={() => send(field)}>
-        Send to {field}
-      </button>
-    {/each}
+    <label for="landing-target">Send to</label>
+    <select
+      id="landing-target"
+      bind:value={() => target ?? "", (name) => (chosen = name)}
+    >
+      {#each fields as field (field)}
+        <option value={field}>{field}</option>
+      {/each}
+    </select>
+    <button type="button" onclick={send} disabled={target === undefined}>
+      Send
+    </button>
   </div>
 
   <div class="row">
@@ -126,11 +145,16 @@
     margin-top: 0.4rem;
   }
 
-  .row input {
+  .row input[type="checkbox"] {
     flex: none;
   }
 
-  .row label {
+  .row select {
+    flex: 1 1 6rem;
+    min-width: 0;
+  }
+
+  .row label[for="landing-replace"] {
     flex: 1 1 8rem;
     min-width: 0;
   }

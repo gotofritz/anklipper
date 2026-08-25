@@ -762,17 +762,16 @@ describe("22. the landing area (10a.1)", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers a button for each field of the note type in hand", async () => {
+  it("offers the fields of the note type in hand as destinations", async () => {
     renderEditor();
 
     await chooseNoteType("Cloze");
 
     expect(
-      screen.getByRole("button", { name: /send to text/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /send to front/i }),
-    ).not.toBeInTheDocument();
+      [...screen.getByLabelText(/send to/i).querySelectorAll("option")].map(
+        (one) => one.value,
+      ),
+    ).toEqual(["Text", "Back Extra"]);
   });
 });
 
@@ -787,9 +786,10 @@ describe("23. sending a selection into a field (10a.2)", () => {
   }
 
   async function sendTo(field: string) {
-    await fireEvent.click(
-      screen.getByRole("button", { name: new RegExp(`send to ${field}`, "i") }),
-    );
+    await fireEvent.change(screen.getByLabelText(/send to/i), {
+      target: { value: field },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
   }
 
   it("puts the selected run into the field", async () => {
