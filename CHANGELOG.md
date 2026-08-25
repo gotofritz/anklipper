@@ -9,6 +9,13 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [0.6.0](https://github.com/gotofritz/anklipper/compare/v0.5.0...v0.6.0) (2026-08-25)
+
+
+### Features
+
+* **m6:** the sidebar editor, built against the fake AnkiClient ([#17](https://github.com/gotofritz/anklipper/issues/17)) ([70de0ce](https://github.com/gotofritz/anklipper/commit/70de0cecbf6791a60182ad59f108faecfc353532))
+
 ## [0.5.0](https://github.com/gotofritz/anklipper/compare/v0.4.0...v0.5.0) (2026-08-24)
 
 
