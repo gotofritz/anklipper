@@ -1,6 +1,11 @@
 import type { ClozeIssue, ClozeIssueCode } from "@/core/cloze";
 import type { DraftIssue, DraftIssueCode } from "@/core/draft";
-import type { AnkiError, AnkiErrorKind } from "@/core/ports/types";
+import type {
+  AnkiError,
+  AnkiErrorKind,
+  DraftStoreError,
+  StoreErrorKind,
+} from "@/core/ports/types";
 
 /**
  * Every sentence the editor says about a failure (6.4).
@@ -119,4 +124,20 @@ const DRAFT_COPY: Readonly<
 
 export function draftIssueCopy(issue: DraftIssue): string {
   return DRAFT_COPY[issue.code](issue);
+}
+
+/**
+ * 7.1's failure, in one line rather than a cause and an action: it is
+ * appended to a sentence that already says what is at stake, so a second
+ * "try again" would be the third imperative in a row.
+ */
+const STORE_COPY: Readonly<Record<StoreErrorKind, string>> = {
+  "read-failed": "The browser would not give the saved copy back.",
+  "write-failed": "The browser refused to store it — it may be out of space.",
+  "malformed-stored-value":
+    "What was stored is not a card Anklipper can read back.",
+};
+
+export function draftStoreErrorCopy(error: DraftStoreError): string {
+  return `${STORE_COPY[error.kind]} Add it now, or copy the text somewhere safe.`;
 }

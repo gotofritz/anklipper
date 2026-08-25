@@ -3,7 +3,7 @@ import type { CaptureReport } from "@/background/capture";
 import { startBackground } from "@/background/start";
 import { createCommands } from "@/platform/commands";
 import { createContextMenus } from "@/platform/context-menus";
-import { createStoredDrafts } from "@/platform/draft-store";
+import { PENDING_KEY, createStoredDrafts } from "@/platform/draft-store";
 import { createOrigin } from "@/platform/origin";
 import {
   ANKI_CONNECT_HOST_PERMISSION,
@@ -19,13 +19,18 @@ import { createStorage } from "@/platform/storage";
 // keeps no state of its own. Logic lives in `@/background/`, where tests reach
 // it: the TDD gate exempts entrypoints.
 export default defineBackground(() => {
+  const storage = createStorage();
+
   startBackground({
     messaging: createRuntimeMessaging(),
     menus: createContextMenus(),
     commands: createCommands(),
     scripting: createScripting(),
     sidebar: createBrowserSidebar(),
-    drafts: createStoredDrafts(createStorage()),
+    drafts: createStoredDrafts(storage),
+    // One draft is edited at a time (7.4): a gesture made while another card
+    // is open parks its draft here, and the sidebar asks which was meant.
+    pending: createStoredDrafts(storage, PENDING_KEY),
     // What each capture did, in development only. The report carries kinds
     // and our own messages — never the draft, the selection, or the page —
     // so this stays inside the privacy rule; the DEV guard keeps it out of a

@@ -23,6 +23,8 @@ export interface BackgroundDeps {
   readonly scripting: ScriptingPort;
   readonly sidebar: SidebarPort;
   readonly drafts: DraftStore;
+  /** Where a capture waits when a draft is already in flight (7.4). */
+  readonly pending: DraftStore;
   readonly defaults?: GenerationDefaults;
   readonly now?: () => Date;
   /**
@@ -49,10 +51,19 @@ export function startBackground(deps: BackgroundDeps): () => void {
 
   registry.on("ping", () => ({ from: "background" }) as const);
   registry.on("get-draft", async () => {
-    const stored = await deps.drafts.load();
+    const [stored, waiting] = await Promise.all([
+      deps.drafts.load(),
+      deps.pending.load(),
+    ]);
+
     // A read that failed and an empty store are the same thing to the sidebar:
     // there is nothing to show. The store's own error is not the sidebar's.
-    return { draft: stored.ok ? stored.value : undefined };
+    return {
+      draft: stored.ok ? stored.value : undefined,
+      // 7.4: what the sidebar asks about, when a second gesture arrived while
+      // the first card was still being edited.
+      pending: waiting.ok ? waiting.value : undefined,
+    };
   });
 
   const capture = async (trigger: CaptureTrigger) => {
@@ -61,6 +72,7 @@ export function startBackground(deps: BackgroundDeps): () => void {
       scripting: deps.scripting,
       sidebar: deps.sidebar,
       drafts: deps.drafts,
+      pending: deps.pending,
       ...(deps.defaults === undefined ? {} : { defaults: deps.defaults }),
       ...(deps.now === undefined ? {} : { now: deps.now }),
     });

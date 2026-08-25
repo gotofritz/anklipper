@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import type { ClozeIssueCode } from "@/core/cloze";
 import type { DraftIssueCode } from "@/core/draft";
-import type { AnkiErrorKind } from "@/core/ports/types";
+import type { AnkiErrorKind, StoreErrorKind } from "@/core/ports/types";
 
-import { ankiErrorCopy, clozeIssueCopy, draftIssueCopy } from "./error-copy";
+import {
+  ankiErrorCopy,
+  clozeIssueCopy,
+  draftIssueCopy,
+  draftStoreErrorCopy,
+} from "./error-copy";
 
 /**
  * The taxonomies as the layers below declare them. A kind missing here still
@@ -145,5 +150,29 @@ describe("what to tell the user about an invalid draft", () => {
 
     expect(copy).toMatch(/space/i);
     expect(copy).toContain("two words");
+  });
+});
+
+/**
+ * 7.1's failure. An edit that was not stored looks exactly like one that was,
+ * so the user has to be told in the same terms as any other cause.
+ */
+describe("what to tell the user about a draft that was not stored", () => {
+  const STORE_KINDS: readonly StoreErrorKind[] = [
+    "read-failed",
+    "write-failed",
+    "malformed-stored-value",
+  ];
+
+  it("explains every kind the store reports", () => {
+    for (const kind of STORE_KINDS) {
+      expect(draftStoreErrorCopy({ kind, message: "raw" }), kind).not.toBe("");
+    }
+  });
+
+  it("says what to do about a browser that would not store it", () => {
+    expect(
+      draftStoreErrorCopy({ kind: "write-failed", message: "quota" }),
+    ).toMatch(/add it now|browser/i);
   });
 });

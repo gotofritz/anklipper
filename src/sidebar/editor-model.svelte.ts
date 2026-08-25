@@ -8,7 +8,9 @@ import {
 import type { CardDraft, DraftIssue } from "@/core/draft";
 import {
   addTag as addTagTo,
+  convertToCloze as convertToClozeOn,
   noteTypeKindOf,
+  refreshNoteType,
   removeTag as removeTagFrom,
   setDeck as setDeckOn,
   setField as setFieldOn,
@@ -16,7 +18,13 @@ import {
 } from "@/core/draft";
 import type { NoteType } from "@/core/note-type";
 import { primaryFieldOf } from "@/core/note-type";
-import type { AnkiClient, AnkiError, NoteId } from "@/core/ports/types";
+import type {
+  AnkiClient,
+  AnkiError,
+  DraftStore,
+  DraftStoreError,
+  NoteId,
+} from "@/core/ports/types";
 import { validateDraft } from "@/core/validate";
 
 import { clozeIssueCopy, draftIssueCopy } from "./error-copy";
@@ -53,7 +61,28 @@ export type Submission =
 export interface EditorDeps {
   readonly anki: AnkiClient;
   readonly draft: CardDraft;
+  /**
+   * Where every edit goes (7.1). The draft is durable from the moment it
+   * exists, and an edit is part of it: Firefox's sidebar goes with the window
+   * and the background is unloaded when idle, so work held only in memory is
+   * lost without the user having done anything wrong.
+   */
+  readonly drafts: DraftStore;
+  /** How long an edit waits before it is written. */
+  readonly debounceMs?: number;
+  /**
+   * The card reached Anki (7.3). The slot it was held in is the panel's to
+   * hand over, since a capture may already be waiting behind it (7.4).
+   */
+  readonly onAdded?: (noteId: NoteId) => void | Promise<void>;
 }
+
+/**
+ * Long enough that a sentence typed at speed is one write, short enough that
+ * a sidebar closed straight after an edit has already written it. Both halves
+ * of M7's risk: every keystroke is wasteful, and on blur loses the last field.
+ */
+export const SAVE_DEBOUNCE_MS = 400;
 
 export interface EditorModel {
   readonly draft: CardDraft;
@@ -75,6 +104,10 @@ export interface EditorModel {
   readonly nextOrdinal: number;
   /** A transition a pure function refused, already in the user's words. */
   readonly notice: string | undefined;
+  /** Why the last edit was not persisted, if it was not (7.1). */
+  readonly saveError: DraftStoreError | undefined;
+  /** The note type a captured card converts to (3.12), once Anki has named one. */
+  readonly clozeTarget: NoteType | undefined;
   load(): Promise<void>;
   checkDuplicate(): Promise<void>;
   setDeck(deck: string): void;
@@ -85,6 +118,12 @@ export interface EditorModel {
   /** Returns where to leave the caret, or `undefined` if it was refused. */
   markCloze(start: number, end: number, ordinal?: number): number | undefined;
   removeCloze(ordinal: number): void;
+  /** Basic → Cloze, carrying the selection across (3.12). */
+  convertToCloze(): void;
+  /** Write an outstanding edit now — before a submit, or before the sidebar closes. */
+  flush(): Promise<void>;
+  /** Drop an outstanding edit and stop the clock. The sidebar is going away. */
+  stop(): void;
   submit(): Promise<void>;
 }
 
@@ -110,9 +149,45 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
   let duplicate = $state.raw<Resource<boolean>>({ kind: "idle" });
   let submission = $state.raw<Submission>({ kind: "idle" });
   let notice = $state.raw<string | undefined>(undefined);
+  let saveError = $state.raw<DraftStoreError | undefined>(undefined);
 
   /** Latest-wins: an edit can outrun the duplicate check it started. */
   let duplicateRun = 0;
+
+  const debounceMs = deps.debounceMs ?? SAVE_DEBOUNCE_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let unwritten: CardDraft | undefined;
+  /**
+   * The card is in Anki and the slot has been handed over (7.3). A write
+   * landing after that would put the card that was just added straight back
+   * into it.
+   */
+  let done = false;
+
+  function cancel(): void {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  }
+
+  /** Debounced, per M7's risk: not every keystroke, and not only on blur. */
+  function persist(next: CardDraft): void {
+    if (done) return;
+    unwritten = next;
+    cancel();
+    timer = setTimeout(() => void write(), debounceMs);
+  }
+
+  async function write(): Promise<void> {
+    cancel();
+    const outstanding = unwritten;
+    unwritten = undefined;
+    if (outstanding === undefined || done) return;
+
+    const saved = await deps.drafts.save(outstanding);
+    // Silently failing to save is the one failure the user cannot see coming:
+    // everything still looks edited, and none of it is anywhere.
+    saveError = saved.ok ? undefined : saved.error;
+  }
 
   /**
    * The single place the draft is replaced. A duplicate warning is about one
@@ -123,6 +198,7 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
   function apply(next: CardDraft): void {
     const changed = firstFieldValue(next) !== firstFieldValue(draft);
     draft = next;
+    persist(next);
     notice = undefined;
     // The last attempt was about the draft as it was; an edit makes both its
     // verdict and its error stale, and re-arms the add button.
@@ -143,6 +219,17 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
   function clozeText(): string {
     const field = clozeFieldOf();
     return field === undefined ? "" : (draft.fields[field] ?? "");
+  }
+
+  /**
+   * The note type a Basic capture converts to (3.12). Anki's own list, and
+   * its own reading of the flavour (4.6) — never a name matched here.
+   */
+  function clozeTargetOf(): NoteType | undefined {
+    if (noteTypeKindOf(draft) === "cloze") return undefined;
+    if (noteTypes.kind !== "ready") return undefined;
+
+    return noteTypes.value.find((one) => one.kind === "cloze");
   }
 
   return {
@@ -190,6 +277,12 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
     get notice() {
       return notice;
     },
+    get saveError() {
+      return saveError;
+    },
+    get clozeTarget() {
+      return clozeTargetOf();
+    },
 
     async load(): Promise<void> {
       decks = { kind: "loading" };
@@ -206,6 +299,20 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
       noteTypes = models.ok
         ? { kind: "ready", value: models.value }
         : { kind: "failed", error: models.error };
+
+      // The note type may have been edited in Anki since the capture, and
+      // field names are the draft's keys (3.1) — submitting one Anki no
+      // longer has would be refused three layers from here. `refreshNoteType`
+      // returns the draft itself when the two readings agree, which is the
+      // ordinary case and must not count as an edit.
+      if (models.ok) {
+        const fresh = models.value.find(
+          (one) => one.name === draft.noteType.name,
+        );
+        const reconciled =
+          fresh === undefined ? draft : refreshNoteType(draft, fresh);
+        if (reconciled !== draft) apply(reconciled);
+      }
 
       await this.checkDuplicate();
     },
@@ -309,12 +416,34 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
       else refuse(next.error);
     },
 
+    convertToCloze(): void {
+      const target = clozeTargetOf();
+      if (target === undefined) return;
+
+      const next = convertToClozeOn(draft, target);
+      if (next.ok) apply(next.value);
+      else refuse(next.error);
+    },
+
+    flush(): Promise<void> {
+      return write();
+    },
+
+    stop(): void {
+      cancel();
+      unwritten = undefined;
+    },
+
     async submit(): Promise<void> {
-      // Success does not clear the draft here — that is M7's (7.3) — so
-      // without this a second press would put a second copy into Anki.
+      // The slot is handed over on success (7.3), so a second press would
+      // otherwise put a second copy of the same card into Anki.
       if (submission.kind === "added" || submission.kind === "submitting") {
         return;
       }
+      // Before anything is sent: a failed add is 7.2's case, and it has to
+      // leave the edits behind rather than the draft as it was captured.
+      await write();
+
       if (validateDraft(draft).length > 0) {
         submission = { kind: "refused" };
         return;
@@ -322,9 +451,17 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
 
       submission = { kind: "submitting" };
       const added = await deps.anki.addNote(draft);
-      submission = added.ok
-        ? { kind: "added", noteId: added.value }
-        : { kind: "failed", error: added.error };
+      if (!added.ok) {
+        // 7.2: the draft stands, and pressing again retries it unchanged.
+        submission = { kind: "failed", error: added.error };
+        return;
+      }
+
+      done = true;
+      cancel();
+      unwritten = undefined;
+      submission = { kind: "added", noteId: added.value };
+      await deps.onAdded?.(added.value);
     },
   };
 }

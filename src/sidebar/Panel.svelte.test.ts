@@ -1,9 +1,11 @@
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
+import type { ComponentProps } from "svelte";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaptureWarning } from "@/core/capture";
 import { createDraft } from "@/core/draft";
 import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
+import { createFakeDraftStore } from "@/core/ports/fakes/fake-draft-store";
 import { BASIC } from "@/fixtures/note-types";
 
 import Panel from "./Panel.svelte";
@@ -16,6 +18,24 @@ const client = () =>
 const noDraft = async (): Promise<DraftStatus> => ({ kind: "empty" });
 /** No capture happens while the panel is mounted, in most of these cases. */
 const noChanges = () => () => {};
+
+type PanelProps = ComponentProps<typeof Panel>;
+type PanelDefaults = "anki" | "drafts" | "pending";
+
+/** The panel now owns the two draft slots (7.3, 7.4), so every case has both. */
+function renderPanel(
+  props: Omit<PanelProps, PanelDefaults> &
+    Partial<Pick<PanelProps, PanelDefaults>>,
+) {
+  const drafts = createFakeDraftStore();
+  const pending = createFakeDraftStore();
+
+  return {
+    drafts,
+    pending,
+    ...render(Panel, { anki: client(), drafts, pending, ...props }),
+  };
+}
 
 function draftWith(warnings?: readonly CaptureWarning[]) {
   return createDraft({
@@ -39,11 +59,10 @@ function draftWith(warnings?: readonly CaptureWarning[]) {
 
 describe("sidebar panel", () => {
   it("names the extension", () => {
-    render(Panel, {
+    renderPanel({
       connect: never,
       loadDraft: noDraft,
       subscribe: noChanges,
-      anki: client(),
     });
 
     expect(
@@ -52,33 +71,30 @@ describe("sidebar panel", () => {
   });
 
   it("says it is connecting while the background has not answered", () => {
-    render(Panel, {
+    renderPanel({
       connect: never,
       loadDraft: noDraft,
       subscribe: noChanges,
-      anki: client(),
     });
 
     expect(screen.getByRole("status")).toHaveTextContent(/connecting/i);
   });
 
   it("reports the context that answered once it has", async () => {
-    render(Panel, {
+    renderPanel({
       connect: async () => ({ kind: "connected", from: "background" }),
       loadDraft: noDraft,
       subscribe: noChanges,
-      anki: client(),
     });
 
     expect(await screen.findByRole("status")).toHaveTextContent(/background/i);
   });
 
   it("reports an unreachable background rather than staying blank", async () => {
-    render(Panel, {
+    renderPanel({
       connect: async () => ({ kind: "unavailable", reason: "no-receiver" }),
       loadDraft: noDraft,
       subscribe: noChanges,
-      anki: client(),
     });
 
     expect(await screen.findByRole("status")).toHaveTextContent(/no-receiver/);
@@ -87,11 +103,10 @@ describe("sidebar panel", () => {
 
 describe("the captured draft", () => {
   it("says nothing has been captured yet", async () => {
-    render(Panel, {
+    renderPanel({
       connect: never,
       loadDraft: noDraft,
       subscribe: noChanges,
-      anki: client(),
     });
 
     expect(
@@ -100,11 +115,14 @@ describe("the captured draft", () => {
   });
 
   it("opens the captured draft in the editor", async () => {
-    render(Panel, {
+    renderPanel({
       connect: never,
-      loadDraft: async () => ({ kind: "captured", draft: draftWith() }),
+      loadDraft: async () => ({
+        kind: "captured",
+        draft: draftWith(),
+        pending: undefined,
+      }),
       subscribe: noChanges,
-      anki: client(),
     });
 
     expect(await screen.findByLabelText("Front")).toHaveValue(
@@ -118,7 +136,7 @@ describe("the captured draft", () => {
 
   // 5.4: a card silently missing its context is worse than one that says so.
   it("names what could not be captured", async () => {
-    render(Panel, {
+    renderPanel({
       connect: never,
       loadDraft: async () => ({
         kind: "captured",
@@ -128,9 +146,9 @@ describe("the captured draft", () => {
             message: "the selection is inside a shadow root",
           },
         ]),
+        pending: undefined,
       }),
       subscribe: noChanges,
-      anki: client(),
     });
 
     expect(
@@ -139,14 +157,13 @@ describe("the captured draft", () => {
   });
 
   it("reports a draft it could not read rather than staying blank", async () => {
-    render(Panel, {
+    renderPanel({
       connect: never,
       loadDraft: async () => ({
         kind: "unavailable",
         reason: "no-receiver: nothing is listening",
       }),
       subscribe: noChanges,
-      anki: client(),
     });
 
     expect(await screen.findByText(/nothing is listening/)).toBeInTheDocument();
@@ -161,20 +178,19 @@ describe("a capture while the panel is open", () => {
     let notify = () => {};
     let status: DraftStatus = { kind: "empty" };
 
-    render(Panel, {
+    renderPanel({
       connect: never,
       loadDraft: async () => status,
       subscribe: (onChange: () => void) => {
         notify = onChange;
         return () => {};
       },
-      anki: client(),
     });
     expect(
       await screen.findByText(/select some text.*create anki card/i),
     ).toBeInTheDocument();
 
-    status = { kind: "captured", draft: draftWith() };
+    status = { kind: "captured", draft: draftWith(), pending: undefined };
     notify();
 
     expect(await screen.findByLabelText("Front")).toHaveValue(
@@ -185,14 +201,267 @@ describe("a capture while the panel is open", () => {
   it("stops watching once it is unmounted", () => {
     const dispose = vi.fn();
 
-    const { unmount } = render(Panel, {
+    const { unmount } = renderPanel({
       connect: never,
       loadDraft: noDraft,
       subscribe: () => dispose,
-      anki: client(),
     });
     unmount();
 
     expect(dispose).toHaveBeenCalled();
+  });
+});
+
+function otherDraft() {
+  return createDraft({
+    deck: "Geography",
+    noteType: BASIC,
+    fields: { Front: "Berlin is the capital of Germany." },
+    source: {
+      text: "Berlin is the capital of Germany.",
+      context: "",
+      url: "https://example.test/germany",
+      title: "Germany — Example",
+    },
+    createdAt: "2026-01-01T12:05:00.000Z",
+    generation: { name: "basic", version: 1 },
+  });
+}
+
+/**
+ * 7.4. Two cards cannot be edited at once, and the one already open may carry
+ * work — so the newer selection waits and the user says which they meant.
+ */
+describe("a second selection while a card is open", () => {
+  function panelWithPending() {
+    const captured = draftWith();
+    const waiting = otherDraft();
+    let status: DraftStatus = {
+      kind: "captured",
+      draft: captured,
+      pending: waiting,
+    };
+    let notify = () => {};
+
+    const rendered = renderPanel({
+      connect: never,
+      loadDraft: async () => status,
+      subscribe: (onChange: () => void) => {
+        notify = onChange;
+        return () => {};
+      },
+    });
+
+    // What the store actually holds, so the panel's own writes are visible.
+    void rendered.drafts.save(captured);
+    void rendered.pending.save(waiting);
+
+    return {
+      ...rendered,
+      captured,
+      waiting,
+      reread: async () => {
+        const [inFlight, behind] = await Promise.all([
+          rendered.drafts.load(),
+          rendered.pending.load(),
+        ]);
+        status =
+          inFlight.ok && inFlight.value !== undefined
+            ? {
+                kind: "captured",
+                draft: inFlight.value,
+                pending: behind.ok ? behind.value : undefined,
+              }
+            : { kind: "empty" };
+        notify();
+      },
+    };
+  }
+
+  it("asks rather than replacing what is open", async () => {
+    panelWithPending();
+
+    expect(
+      await screen.findByText(/newer selection is waiting/i),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Front")).toHaveValue(
+      "Paris is the capital of France.",
+    );
+  });
+
+  it("opens the newer selection when the user says so", async () => {
+    const { drafts, pending, reread } = panelWithPending();
+    await screen.findByText(/newer selection is waiting/i);
+
+    await fireEvent.click(
+      screen.getByRole("button", { name: /use the new selection/i }),
+    );
+    await reread();
+
+    expect(await screen.findByLabelText("Front")).toHaveValue(
+      "Berlin is the capital of Germany.",
+    );
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.source.title).toBe("Germany — Example");
+    await expect(pending.load()).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it("keeps the card that is open when the user declines", async () => {
+    const { drafts, pending, reread } = panelWithPending();
+    await screen.findByText(/newer selection is waiting/i);
+
+    await fireEvent.click(
+      screen.getByRole("button", { name: /keep this card/i }),
+    );
+    await reread();
+
+    expect(screen.getByLabelText("Front")).toHaveValue(
+      "Paris is the capital of France.",
+    );
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.source.title).toBe("France — Example");
+    await expect(pending.load()).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(screen.queryByText(/newer selection is waiting/i)).toBeNull();
+  });
+});
+
+/** 7.3: the card is in Anki, the slot is handed over, and the panel says so. */
+describe("after the card has been added", () => {
+  it("confirms in the panel rather than falling back to the first-run text", async () => {
+    let status: DraftStatus = {
+      kind: "captured",
+      draft: draftWith(),
+      pending: undefined,
+    };
+    let notify = () => {};
+    const { drafts } = renderPanel({
+      connect: never,
+      loadDraft: async () => status,
+      subscribe: (onChange: () => void) => {
+        notify = onChange;
+        return () => {};
+      },
+    });
+    await drafts.save(draftWith());
+    await screen.findByLabelText("Front");
+
+    await fireEvent.click(screen.getByRole("button", { name: /add card/i }));
+    await vi.waitFor(async () => {
+      const stored = await drafts.load();
+      expect(stored.ok && stored.value).toBeUndefined();
+    });
+    status = { kind: "empty" };
+    notify();
+
+    await vi.waitFor(() =>
+      expect(screen.getByText(/added to anki/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByLabelText("Front")).toBeNull();
+  });
+
+  it("opens the selection that was waiting behind it", async () => {
+    const waiting = otherDraft();
+    let status: DraftStatus = {
+      kind: "captured",
+      draft: draftWith(),
+      pending: waiting,
+    };
+    let notify = () => {};
+    const { drafts, pending } = renderPanel({
+      connect: never,
+      loadDraft: async () => status,
+      subscribe: (onChange: () => void) => {
+        notify = onChange;
+        return () => {};
+      },
+    });
+    await drafts.save(draftWith());
+    await pending.save(waiting);
+    await screen.findByLabelText("Front");
+
+    await fireEvent.click(screen.getByRole("button", { name: /add card/i }));
+    await vi.waitFor(async () => {
+      const behind = await pending.load();
+      expect(behind.ok && behind.value).toBeUndefined();
+    });
+    const stored = await drafts.load();
+    status =
+      stored.ok && stored.value !== undefined
+        ? { kind: "captured", draft: stored.value, pending: undefined }
+        : { kind: "empty" };
+    notify();
+
+    await vi.waitFor(() =>
+      expect(screen.getByLabelText("Front")).toHaveValue(
+        "Berlin is the capital of Germany.",
+      ),
+    );
+  });
+});
+
+/**
+ * The panel re-reads on every storage change, including the ones the editor
+ * itself causes by saving an edit (7.1). Remounting the editor on those would
+ * throw away the caret, the cloze selection, and anything typed since.
+ */
+describe("re-reading while the user is editing", () => {
+  it("does not remount the editor for the same capture", async () => {
+    let status: DraftStatus = {
+      kind: "captured",
+      draft: draftWith(),
+      pending: undefined,
+    };
+    let notify = () => {};
+    renderPanel({
+      connect: never,
+      loadDraft: async () => status,
+      subscribe: (onChange: () => void) => {
+        notify = onChange;
+        return () => {};
+      },
+    });
+    await screen.findByLabelText("Front");
+
+    await fireEvent.input(screen.getByLabelText("Back"), {
+      target: { value: "Paris" },
+    });
+    // The same capture, read back from the store as the editor last wrote it.
+    status = { kind: "captured", draft: draftWith(), pending: undefined };
+    notify();
+
+    expect(await screen.findByLabelText("Back")).toHaveValue("Paris");
+  });
+
+  it("remounts for a capture that is a different one", async () => {
+    let status: DraftStatus = {
+      kind: "captured",
+      draft: draftWith(),
+      pending: undefined,
+    };
+    let notify = () => {};
+    renderPanel({
+      connect: never,
+      loadDraft: async () => status,
+      subscribe: (onChange: () => void) => {
+        notify = onChange;
+        return () => {};
+      },
+    });
+    await screen.findByLabelText("Front");
+
+    status = { kind: "captured", draft: otherDraft(), pending: undefined };
+    notify();
+
+    await vi.waitFor(() =>
+      expect(screen.getByLabelText("Front")).toHaveValue(
+        "Berlin is the capital of Germany.",
+      ),
+    );
   });
 });
