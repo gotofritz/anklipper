@@ -14,6 +14,7 @@
 
   import FieldEditor from "./FieldEditor.svelte";
   import FormatToolbar from "./FormatToolbar.svelte";
+  import LandingArea from "./LandingArea.svelte";
   import Picker from "./Picker.svelte";
   import TagEditor from "./TagEditor.svelte";
   import { createEditorModel } from "./editor-model.svelte";
@@ -91,6 +92,12 @@
   let at = $state.raw<{ field: string; range: TextRange } | undefined>(
     undefined,
   );
+  /**
+   * The last caret each field was left at, kept per field rather than only for
+   * the most recent one: sending from the landing area into `Back` should land
+   * where `Back`'s caret was, whatever field was touched after it.
+   */
+  const carets = new SvelteMap<string, TextRange>();
 
   $effect(() => {
     void model.load();
@@ -169,6 +176,7 @@
   function register(name: string, api: FieldApi | undefined) {
     if (api === undefined) {
       fields.delete(name);
+      carets.delete(name);
       if (at?.field === name) at = undefined;
     } else {
       fields.set(name, api);
@@ -178,6 +186,22 @@
   function onSelect(field: string, range: TextRange | undefined) {
     if (range === undefined) return;
     at = { field, range };
+    carets.set(field, range);
+  }
+
+  /**
+   * 10a.2. Where it lands is the caret the user last left in that field —
+   * which is why the caret is cached per field: by the time the button is
+   * pressed the focus is in the landing area and the field's own selection is
+   * gone. A field never focused takes it on the end, which loses nothing.
+   */
+  function sendToField(field: string, text: string, replace: boolean) {
+    const caret = carets.get(field);
+
+    model.sendToField(field, text, {
+      ...(caret === undefined ? {} : { start: caret.start, end: caret.end }),
+      replace,
+    });
   }
 
   /**
@@ -298,6 +322,18 @@
 -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <form class="editor" onsubmit={submit} onkeydown={onKeydown}>
+  <!--
+    10a.1, above the note type on purpose: it is what the card is made from,
+    and it is the one thing on this form that changing the note type does not
+    touch.
+  -->
+  <LandingArea
+    text={model.draft.scratch}
+    fields={model.draft.noteType.fields}
+    onInput={(text) => model.setScratch(text)}
+    onSend={sendToField}
+  />
+
   <Picker
     id="deck"
     label="Deck"
@@ -358,6 +394,19 @@
       onToggleSticky={(field) => void model.toggleSticky(field)}
     />
   {/each}
+
+  {#if model.stashedNoteTypes.length > 0}
+    <!--
+      3.2 stashes what a note-type change could not carry, and said nothing
+      about it — which is what made the change look like the text being thrown
+      away. It is not: switching back brings it, and the landing area above
+      never had it taken.
+    -->
+    <p class="quiet" role="status">
+      What {model.stashedNoteTypes.join(" and ")} had in its fields is kept, and comes
+      back if you switch to it again.
+    </p>
+  {/if}
 
   {#if model.clozeTarget !== undefined}
     <!--

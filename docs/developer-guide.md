@@ -46,6 +46,15 @@ markup without the model changing at all. Deck and note-type pickers filter,
 tags complete from the collection, and a duplicate is shown on the first field
 rather than as a banner.
 
+M10a followed it, on the same branch, from the first real use: changing note
+type looked like it threw the selected text away. It did not — 3.2 stashes
+what a switch cannot carry — but Basic and Cloze share no field name, so the
+switch emptied every field and nothing said why. `CardDraft.scratch` is the
+answer: the selected text, plain, outside the field map, rendered as a
+landing area above the note type and never touched by a note-type change.
+Fields are filled from it by `sendToField`, and the stash is now named rather
+than silent.
+
 Still to come: onboarding for the host permission, and connection diagnostics
 (M9) — which M10 did not wait for, since nothing in it depends on M9's
 onboarding flow.

@@ -25,6 +25,7 @@ function draftOf(
     noteType,
     fields,
     tags: ["europe"],
+    scratch: "Paris is the capital of France.",
     source: {
       text: "Paris is the capital of France.",
       context: "France is a country in Europe.",
@@ -715,5 +716,128 @@ describe("21. what the panel is told", () => {
     await screen.findByText(/added to anki/i);
 
     expect(onAdded).toHaveBeenCalledWith(1);
+  });
+});
+
+/**
+ * The landing area, and the complaint it exists for: switching from Basic to
+ * Cloze remaps nothing, because the two share no field name, so 3.2 stashes
+ * every field and the form renders empty. The text was never lost; it just
+ * had nowhere to be seen.
+ */
+describe("22. the landing area (10a.1)", () => {
+  function landing() {
+    return screen.getByLabelText(/selected text/i) as HTMLTextAreaElement;
+  }
+
+  async function chooseNoteType(name: string) {
+    await screen.findByRole("option", { name });
+    await fireEvent.change(screen.getByLabelText(/^note type$/i), {
+      target: { value: name },
+    });
+  }
+
+  it("shows the captured text", () => {
+    renderEditor();
+
+    expect(landing()).toHaveValue("Paris is the capital of France.");
+  });
+
+  it("keeps it when the note type change empties every field", async () => {
+    renderEditor();
+
+    await chooseNoteType("Cloze");
+
+    expect(fieldOf("Text").textContent).toBe("");
+    expect(landing()).toHaveValue("Paris is the capital of France.");
+  });
+
+  it("says the old note type's content is kept, rather than nothing", async () => {
+    renderEditor();
+
+    await chooseNoteType("Cloze");
+
+    expect(
+      screen.getByText(/what basic had in its fields is kept/i),
+    ).toBeInTheDocument();
+  });
+
+  it("offers a button for each field of the note type in hand", async () => {
+    renderEditor();
+
+    await chooseNoteType("Cloze");
+
+    expect(
+      screen.getByRole("button", { name: /send to text/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /send to front/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("23. sending a selection into a field (10a.2)", () => {
+  function landing() {
+    return screen.getByLabelText(/selected text/i) as HTMLTextAreaElement;
+  }
+
+  function selectInLanding(text: string) {
+    const at = landing().value.indexOf(text);
+    landing().setSelectionRange(at, at + text.length);
+  }
+
+  async function sendTo(field: string) {
+    await fireEvent.click(
+      screen.getByRole("button", { name: new RegExp(`send to ${field}`, "i") }),
+    );
+  }
+
+  it("puts the selected run into the field", async () => {
+    renderEditor();
+
+    selectInLanding("Paris");
+    await sendTo("Back");
+
+    expect(fieldOf("Back").innerHTML).toBe("Paris");
+  });
+
+  it("lands where the caret was left in that field", async () => {
+    renderEditor();
+
+    await type("Back", "the city of ");
+    await select("Back", "the");
+    fieldOf("Back").blur();
+    const node = fieldOf("Back");
+    const range = document.createRange();
+    range.setStart(node.firstChild as Text, 12);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    await fireEvent.keyUp(node);
+
+    selectInLanding("Paris");
+    await sendTo("Back");
+
+    expect(fieldOf("Back").innerHTML).toBe("the city of Paris");
+  });
+
+  it("replaces the field when the box is ticked", async () => {
+    renderEditor();
+    await type("Back", "wrong");
+
+    await fireEvent.click(screen.getByLabelText(/replace the field/i));
+    selectInLanding("Paris");
+    await sendTo("Back");
+
+    expect(fieldOf("Back").innerHTML).toBe("Paris");
+  });
+
+  it("sends the whole box when nothing in it is selected", async () => {
+    renderEditor();
+
+    await sendTo("Back");
+
+    expect(fieldOf("Back").innerHTML).toBe("Paris is the capital of France.");
   });
 });

@@ -50,6 +50,43 @@ go through `updateRemembered`, since the deck (8.5) and the pins now share it
 and a whole-value write would drop whichever half the other caller had just
 made.
 
+## M10a — the landing area
+
+Added after the milestone, on the same branch, from the first real use of it.
+Not in the plan below; recorded here because it is the same pull request.
+
+**The report:** *"when I change card type the text I selected goes away."*
+
+**The cause was 3.2, working as designed and saying nothing.** A note type owns
+its field names, so `setNoteType` remaps by name and stashes what does not
+match. Basic and Cloze share no field name, so a switch between them carries
+nothing, stashes everything, and renders a form of empty fields. The text was
+never lost — switching back restores it — but nothing in the UI said so, and
+"recoverable if you happen to switch back" is not a thing a user can know.
+
+**The fix is structural, not a message.** `CardDraft.scratch` holds the
+selected text as plain text, outside the field map entirely (P12), seeded by
+generation from the same selection that fills the primary field. Nothing that
+changes note type touches it, because it is not a field. The editor renders it
+as a `<textarea>` above the note-type picker, and `sendToField` fills fields
+*from* it — escaping on the way in, since a field is HTML and page text is not
+(10.5).
+
+Three decisions taken with the user rather than assumed:
+
+| # | Decision | Note |
+|---|----------|------|
+| 10a.1 | The landing area is **plain text**, editable, and persisted with the draft | It is what the extractor read (5.2, 10.3), and it is the surface M12 will generate from. Formatting belongs on the far side of a send. |
+| 10a.2 | Sending **inserts at the caret** the target field was last left at; a checkbox **replaces** instead | Insert loses nothing, so it is the default; replace is destructive, so it is asked for. The caret is cached per field, since pressing the button moves focus off it. |
+| 10a.3 | A capture arriving while a card is open **still waits and asks** (7.4) | Considered appending to the landing area instead; rejected, because there would then be no way to start a fresh card from a selection without discarding first. |
+
+Two smaller things came with it. A draft stored before `scratch` existed has
+its landing area filled from the capture on read, degrading rather than
+refusing (8.2's rule) — a card half-written when the extension updates is
+exactly the one nobody can afford to lose. And the stash is now *named*: the
+editor says which note type's content it is holding, since silence about it
+was the other half of what made a note-type change look destructive.
+
 ---
 
 Index: `00-plan.md`. Depends on: M9. Blocks: M12.

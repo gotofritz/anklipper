@@ -28,7 +28,22 @@ that field — see **Settings** below.
 
 ## Writing the card
 
-The panel works the way Anki's own card editor does.
+The panel works the way Anki's own card editor does, with one thing Anki does
+not have.
+
+**The box at the top holds what you selected.** It is plain text, you can edit
+it, and — this is the point — **it does not change when you change the type of
+card**. Different card types have different fields with different names, so
+switching from one to another cannot always carry what you had typed. The box
+at the top is never a field, so nothing can move it.
+
+To fill a field from it: select the part you want, then press **Send to
+Front**, **Send to Back**, or whichever field you mean. With nothing selected,
+the whole box is sent. By default it drops in where you last had the cursor in
+that field; tick **Replace the field** if you want it to overwrite instead.
+
+If you change card type and a field's contents cannot come with it, Anklipper
+says so and keeps them — switch back and they are there again.
 
 **Every kind of card you have.** Whatever note types are in your collection
 are in the list, with all of their fields, in the order you put them in. If

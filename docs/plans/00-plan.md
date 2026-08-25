@@ -27,6 +27,7 @@ subplan and saying so here, per `AGENTS.md`.
 | P9 | ~~Onboarding uses AnkiConnect's `requestPermission` handshake~~ — **reversed at M4** on evidence: the add-on does not enforce `webCorsOriginList` server-side, and a granted host permission exempts the extension from the browser's CORS check, so there is nothing for the handshake to unblock. Removed rather than kept unused. M9 onboards on the host permission alone | M4 4.15, M9 | Low to restore — one action and one reply shape, both in git |
 | P10 | **Rich text editing arrives in M10**, superseding M6's plain textarea. Capture stays plain text | M10 | Medium — changes the input element under M6's tests |
 | P11 | **Field content is HTML, and `src/core/field-html.ts` is the only thing that decides what kind.** Every formatting action is a pure function over parsed runs; no browser editing command is used | M10 10.2, 10.5 | Low — it is one module, and the alternative is trusting `execCommand` |
+| P12 | **The captured text also lives outside the fields**, as `CardDraft.scratch` — the landing area. Fields are filled *from* it; a note-type change cannot move it | M10a | Low — additive to P4; nothing reads it but the editor and, later, M12 |
 
 ## Constraints
 
@@ -77,6 +78,12 @@ buttons, no parsing, no rendering.
 turned out to be one: M9 is onboarding and diagnostics over M4's taxonomy, and
 M10 touches neither. M9 is open and unchanged, and M11 depends on M10 as
 before.
+
+**M10a is M10's own follow-up**, from the first real use rather than from a
+plan: changing note type read as throwing the selection away. It is recorded
+in the archived M10 plan rather than given a milestone of its own, because it
+is the same pull request and the same subject — the editor being usable. It
+pins P12 and it is where M12's generation will read its input from.
 
 ## Milestones
 

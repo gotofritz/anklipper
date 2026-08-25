@@ -997,3 +997,117 @@ describe("the duplicate, on the first field (10.8)", () => {
     expect(model.duplicateField).toBeUndefined();
   });
 });
+
+describe("the landing area (10a.1)", () => {
+  it("holds what the capture put there", () => {
+    const { model } = modelFor(draftOf(BASIC, { Front: "Capital of France?" }));
+
+    expect(model.draft.scratch).toBe("");
+  });
+
+  it("takes what is typed into it", () => {
+    const { model } = modelFor();
+
+    model.setScratch("Paris is the capital of France.");
+
+    expect(model.draft.scratch).toBe("Paris is the capital of France.");
+  });
+
+  // The complaint this exists for: Basic and Cloze share no field name, so
+  // the switch stashes every field (3.2) and the fields all render empty.
+  it("survives a note-type change that empties every field", async () => {
+    const { model } = modelFor();
+    model.setScratch("Paris is the capital of France.");
+    await model.load();
+
+    model.setNoteType("Cloze");
+
+    expect(model.draft.fields).toEqual({ Text: "", "Back Extra": "" });
+    expect(model.draft.scratch).toBe("Paris is the capital of France.");
+  });
+
+  it("is persisted like any other edit (7.1)", async () => {
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 0,
+    });
+
+    model.setScratch("kept");
+    await model.flush();
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.scratch).toBe("kept");
+  });
+});
+
+describe("sending a selection into a field (10a.2)", () => {
+  function withScratch() {
+    const made = modelFor();
+    made.model.setScratch("Paris is the capital of France.");
+    return made;
+  }
+
+  it("puts the selected run into the field named", () => {
+    const { model } = withScratch();
+
+    model.sendToField("Back", "Paris", {});
+
+    expect(model.draft.fields.Back).toBe("Paris");
+  });
+
+  it("inserts at a range when one is given", () => {
+    const { model } = withScratch();
+    model.setField("Back", "the city of ");
+
+    model.sendToField("Back", "Paris", { start: 12, end: 12 });
+
+    expect(model.draft.fields.Back).toBe("the city of Paris");
+  });
+
+  it("replaces the whole field when that is what was asked for", () => {
+    const { model } = withScratch();
+    model.setField("Back", "wrong");
+
+    model.sendToField("Back", "Paris", { start: 0, end: 0, replace: true });
+
+    expect(model.draft.fields.Back).toBe("Paris");
+  });
+
+  it("says why it refused a field the note type does not have", () => {
+    const { model } = withScratch();
+
+    model.sendToField("Nope", "Paris", {});
+
+    expect(model.notice).toMatch(/no field called Nope/i);
+  });
+
+  it("leaves the landing area alone", () => {
+    const { model } = withScratch();
+
+    model.sendToField("Back", "Paris", {});
+
+    expect(model.draft.scratch).toBe("Paris is the capital of France.");
+  });
+});
+
+describe("saying what a note-type change put away (3.2)", () => {
+  it("names the note type whose content was stashed", async () => {
+    const { model } = modelFor();
+    await model.load();
+
+    expect(model.stashedNoteTypes).toEqual([]);
+
+    model.setNoteType("Cloze");
+
+    expect(model.stashedNoteTypes).toEqual(["Basic"]);
+  });
+
+  it("stops naming it once the content has come back", async () => {
+    const { model } = modelFor();
+    await model.load();
+
+    model.setNoteType("Cloze");
+    model.setNoteType("Basic");
+
+    expect(model.stashedNoteTypes).toEqual([]);
+  });
+});

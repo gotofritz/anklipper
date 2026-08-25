@@ -68,13 +68,15 @@ export function generateBasicCard(
   const primary = primaryFieldOf(defaults.noteType);
   const now = options.now ?? (() => new Date());
 
+  const selected = selection.text.trim();
+
   const draft = createDraft({
     deck: defaults.deck,
     noteType: defaults.noteType,
-    fields:
-      primary === undefined
-        ? {}
-        : { [primary]: fieldFromText(selection.text.trim()) },
+    fields: primary === undefined ? {} : { [primary]: fieldFromText(selected) },
+    // 10a.1. The same text, in the one place a note-type change cannot move
+    // it — and plain, because that is what the extractor read (5.2, 10.3).
+    scratch: selected,
     tags: defaults.tags,
     source: {
       text: selection.text,

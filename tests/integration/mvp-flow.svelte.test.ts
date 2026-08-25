@@ -577,10 +577,12 @@ describe("9. the editor at Anki's own shape", () => {
     app.openSidebar();
     await chooseRecipe();
 
+    // The fields themselves, not the landing area above them, which is a
+    // textbox too and belongs to no note type.
     expect(
-      screen
-        .getAllByRole("textbox")
-        .map((one) => one.getAttribute("aria-label")),
+      [...document.querySelectorAll("[data-field]")].map((one) =>
+        one.getAttribute("data-field"),
+      ),
     ).toEqual(["Title", "Ingredients", "Method", "Applies to"]);
   });
 
@@ -680,5 +682,104 @@ describe("9. the editor at Anki's own shape", () => {
 
     await findField("Front");
     expect(fieldOf("Back").textContent).toBe("");
+  });
+});
+
+/**
+ * 10a: the landing area, end to end. The reported failure was that changing
+ * note type made the selected text disappear — 3.2 stashing every field of a
+ * note type the next one shares no name with, silently.
+ */
+describe("10. the landing area survives the note type", () => {
+  function landing() {
+    return screen.getByLabelText(/selected text/i) as HTMLTextAreaElement;
+  }
+
+  async function chooseNoteType(name: string) {
+    await screen.findByRole("option", { name });
+    await fireEvent.change(screen.getByLabelText(/^note type$/i), {
+      target: { value: name },
+    });
+  }
+
+  async function sendTo(field: string, text?: string) {
+    if (text !== undefined) {
+      const at = landing().value.indexOf(text);
+      landing().setSelectionRange(at, at + text.length);
+    }
+    await fireEvent.click(
+      screen.getByRole("button", { name: new RegExp(`send to ${field}`, "i") }),
+    );
+  }
+
+  it("holds the capture from the moment the sidebar opens", async () => {
+    const app = extension();
+    await app.capture();
+    app.openSidebar();
+    await findField("Front");
+
+    expect(landing()).toHaveValue("Paris is the capital of France.");
+  });
+
+  it("keeps the text through a note-type change, and fills the new fields from it", async () => {
+    const app = extension();
+    await app.capture();
+    app.openSidebar();
+    await findField("Front");
+
+    await chooseNoteType("Vocab");
+
+    // 3.2 carried `Front` because both note types have one, and stashed
+    // `Back`. What matters is that the box below is untouched either way.
+    expect(landing()).toHaveValue("Paris is the capital of France.");
+
+    await sendTo("Example", "Paris");
+    await addCard();
+
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+    expect(app.anki.added[0]?.noteType.name).toBe("Vocab");
+    expect(app.anki.added[0]?.fields["Example"]).toBe("Paris");
+  });
+
+  it("still has it after a switch to a note type sharing no field name", async () => {
+    const app = extension();
+    await app.capture();
+    app.openSidebar();
+    await findField("Front");
+
+    await chooseNoteType("Cloze");
+
+    expect(fieldOf("Text").textContent).toBe("");
+    expect(landing()).toHaveValue("Paris is the capital of France.");
+
+    await sendTo("Text");
+    await mark("Text", "Paris");
+    await addCard();
+
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+    expect(app.anki.added[0]?.fields["Text"]).toBe(
+      "{{c1::Paris}} is the capital of France.",
+    );
+  });
+
+  it("survives the sidebar being closed and opened again (7.1)", async () => {
+    const app = extension();
+    await app.capture();
+    const first = app.openSidebar();
+    await findField("Front");
+
+    await fireEvent.input(landing(), {
+      target: { value: "Paris is in France." },
+    });
+    await vi.waitFor(async () => {
+      const stored = await app.drafts.load();
+      expect(stored.ok && stored.value?.scratch).toBe("Paris is in France.");
+    });
+    first.unmount();
+
+    app.openSidebar();
+    await findField("Front");
+
+    expect(landing()).toHaveValue("Paris is in France.");
   });
 });

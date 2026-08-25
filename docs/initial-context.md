@@ -226,12 +226,27 @@ the map is the pin and the value is what it last held, so a field can be
 pinned while empty. Only *empty* fields are filled on the next card: a pin is
 a convenience and must never overwrite what the user just selected.
 
+**The landing area is the copy a note-type change cannot move** (10a.1).
+`draft.scratch` holds the selected text, as plain text, outside the field map
+entirely. The reason is 3.2 seen from the outside: Basic and Cloze share no
+field name, so switching between them carries nothing, stashes everything, and
+renders a form of empty fields — recoverable, and indistinguishable from data
+loss. So the selection also lives somewhere that is not a field, the editor
+renders it as a `<textarea>` above the note type, and fields are filled *from*
+it by `sendToField` (10a.2), which escapes what it sends because a field is
+HTML and a page's text is not. It is never sent to Anki: it is the material a
+card is made from, not part of the note, and it is what M12's generation will
+read. A draft stored before it existed has its landing area filled from the
+capture on read, degrading rather than refusing (8.2's rule).
+
 **Changing note type remaps by name; unmatched content is stashed, never
 dropped** (3.2). Fields whose names exist in both carry over. The rest move to
 `draft.stash`, keyed by the note type they came from, and are restored — into
 blank fields only — if the user switches back. The stash is bounded two ways:
 restoring consumes it, and clearing a field clears that name out of every
-stash, because content the user deliberately emptied must not reappear.
+stash, because content the user deliberately emptied must not reappear. The
+editor now *says* which note type's content is in the stash — silence about it
+was the other half of what made a note-type change look destructive.
 
 **Validation returns a list of typed issues, not a boolean** (3.4), so the
 editor can name the field and say why. It reports every issue rather than
@@ -690,7 +705,8 @@ in-memory fake rather than a running Anki.
 |--------|-------|
 | `Panel.svelte` | The shell: connection status, and the editor once there is a client to build it against. |
 | `editor-model.svelte.ts` | The view-model — the draft, the asynchronous state, and every intent. |
-| `CardEditor.svelte` | The form: pickers, toolbar, fields, tags, source, warnings, actions. |
+| `CardEditor.svelte` | The form: landing area, pickers, toolbar, fields, tags, source, warnings, actions. |
+| `LandingArea.svelte` | The captured text, and the buttons that send runs of it into fields (10a). |
 | `Picker.svelte` | A name chosen out of a list, with a filter over it (M10). |
 | `FieldEditor.svelte` | One field: the rich input, its HTML source view, and its pin (M10). |
 | `FormatToolbar.svelte` | Anki's formatting buttons, and the cloze controls with them (M10). |
@@ -785,6 +801,15 @@ field** the way Anki shows it rather than as a banner (10.8). It appears when
 `canAddNote` reports that Anki already holds that field, and it stops
 appearing the moment the field changes: a warning about text the user has
 already replaced is worse than no warning.
+
+**The landing area sends into the caret, or replaces** (10a.2). A checkbox
+picks which, and it is off by default: inserting at the caret the user last
+left in that field loses nothing, and replacing is the destructive one and so
+is the one asked for. The caret is cached **per field**, because by the time
+the button is pressed the focus is in the landing area and the field's own
+selection is gone; a field never focused takes the text on its end. Nothing
+selected in the landing area sends all of it — wanting the lot is the common
+case, and refusing would be an error message for something a button can do.
 
 **Tag completion comes from the collection** (10.9), through a `<datalist>` —
 which completes, filters as the user types, is reachable from the keyboard,

@@ -1,6 +1,11 @@
 import type { CaptureWarning } from "./capture";
 import { findMalformedClozeInField, stripClozeFromField } from "./field-cloze";
-import { isFieldEmpty } from "./field-html";
+import {
+  fieldFromText,
+  fieldText,
+  isFieldEmpty,
+  spliceField,
+} from "./field-html";
 import type { NoteType, NoteTypeKind } from "./note-type";
 import { hasField, primaryFieldOf, sameNoteType } from "./note-type";
 import type { Result } from "./result";
@@ -54,6 +59,24 @@ export interface CardDraft {
   readonly fields: FieldMap;
   /** Content a note-type switch could not carry over, keyed by note type (3.2). */
   readonly stash: Readonly<Record<string, FieldMap>>;
+  /**
+   * The landing area (10a.1): the selected text, as plain text, kept apart
+   * from the fields.
+   *
+   * A note type owns its field names (3.1), so changing note type remaps by
+   * name and stashes what does not match (3.2) — which for Basic → Cloze is
+   * everything, and looks from the outside like the selection being thrown
+   * away. This is the copy that is not a field and therefore never moves:
+   * the user works from it, sends pieces of it into whichever fields the
+   * note type has, and changing note type leaves it alone.
+   *
+   * Plain text, not HTML. What the extractor pulls off the page is plain
+   * (5.2, 10.3), and this is that text; `sendToField` is what turns a piece
+   * of it into a field's HTML. It is never sent to Anki — it is the material
+   * a card is made from, not part of the note — and it is where M12's
+   * generation will read from.
+   */
+  readonly scratch: string;
   readonly tags: readonly string[];
   readonly source: CardSource;
   readonly createdAt: string;
@@ -87,6 +110,8 @@ export interface DraftSpec {
   readonly noteType: NoteType;
   /** Values for the note type's own fields; other names are ignored. */
   readonly fields?: FieldMap;
+  /** The landing area's starting text (10a.1). */
+  readonly scratch?: string;
   readonly tags?: readonly string[];
   readonly source: CardSource;
   readonly createdAt: string;
@@ -104,6 +129,7 @@ export function createDraft(spec: DraftSpec): CardDraft {
     noteType: spec.noteType,
     fields,
     stash: {},
+    scratch: spec.scratch ?? "",
     tags: [...(spec.tags ?? [])],
     source: spec.source,
     createdAt: spec.createdAt,
@@ -118,6 +144,63 @@ export function noteTypeKindOf(draft: CardDraft): NoteTypeKind {
 
 export function setDeck(draft: CardDraft, deck: string): CardDraft {
   return { ...draft, deck };
+}
+
+/** Edit the landing area. Nothing else in the draft moves with it (10a.1). */
+export function setScratch(draft: CardDraft, scratch: string): CardDraft {
+  return { ...draft, scratch };
+}
+
+/** Where a piece of the landing area is going, and how it lands (10a.2). */
+export interface SendTarget {
+  readonly field: string;
+  /**
+   * Where in the field's text to put it — the caret the user left there, or a
+   * selection to overwrite. Omitted, it goes on the end, because appending
+   * loses nothing and overwriting from a distance would.
+   */
+  readonly start?: number;
+  readonly end?: number;
+  /** Replace the field outright, whatever the range says. */
+  readonly replace?: boolean;
+}
+
+/**
+ * Put a piece of the landing area into one field (10a.2).
+ *
+ * The text arrives plain and leaves as the field's HTML, escaped and with its
+ * line breaks kept — a page's text must not become a collection's markup
+ * (10.5). What surrounds the insertion point keeps its formatting, so sending
+ * into the middle of a bolded phrase does not flatten it.
+ */
+export function sendToField(
+  draft: CardDraft,
+  text: string,
+  target: SendTarget,
+): Result<CardDraft, DraftIssue> {
+  const current = draft.fields[target.field];
+  if (!hasField(draft.noteType, target.field) || current === undefined) {
+    return err({
+      code: "unknown-field",
+      message: `${draft.noteType.name} has no field called ${target.field}`,
+      field: target.field,
+    });
+  }
+
+  const html = fieldFromText(text);
+  if (target.replace === true) return setField(draft, target.field, html);
+
+  const end = fieldText(current).length;
+  return setField(
+    draft,
+    target.field,
+    spliceField(
+      current,
+      target.start ?? end,
+      target.end ?? target.start ?? end,
+      html,
+    ),
+  );
 }
 
 /**

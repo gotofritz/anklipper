@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { createDraft } from "@/core/draft";
+import type { CardDraft } from "@/core/draft";
+import { isOk } from "@/core/result";
 import { BASIC } from "@/fixtures/note-types";
 
 import {
@@ -165,5 +167,24 @@ describe("the waiting capture", () => {
       value: undefined,
     });
     await expect(drafts.load()).resolves.toEqual({ ok: true, value: DRAFT });
+  });
+});
+
+describe("a draft stored before the landing area existed (10a.1)", () => {
+  it("opens, with the landing area filled from what was captured", async () => {
+    const storage = fakeStorage();
+    const drafts = createStoredDrafts(storage);
+    await drafts.save(DRAFT);
+
+    const stored = {
+      ...((await storage.get<CardDraft>(DRAFT_KEY)) as CardDraft),
+    };
+    delete (stored as { scratch?: string }).scratch;
+    await storage.set(DRAFT_KEY, stored);
+
+    const read = await drafts.load();
+    expect(isOk(read) && read.value?.scratch).toBe(
+      "Paris is the capital of France.",
+    );
   });
 });

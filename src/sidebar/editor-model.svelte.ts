@@ -6,10 +6,13 @@ import {
   noteTypeKindOf,
   refreshNoteType,
   removeTag as removeTagFrom,
+  sendToField as sendToFieldOn,
   setDeck as setDeckOn,
   setField as setFieldOn,
   setNoteType as setNoteTypeOn,
+  setScratch as setScratchOn,
 } from "@/core/draft";
+import type { SendTarget } from "@/core/draft";
 import {
   fieldDeletions,
   markClozeInField,
@@ -137,6 +140,12 @@ export interface EditorModel {
   readonly saveError: DraftStoreError | undefined;
   /** The note type a captured card converts to (3.12), once Anki has named one. */
   readonly clozeTarget: NoteType | undefined;
+  /**
+   * Note types whose content a switch put away and has not given back (3.2).
+   * The stash was silent before, which is what made a note-type change look
+   * like the selection being thrown away.
+   */
+  readonly stashedNoteTypes: readonly string[];
   /** The pinned fields of the note type in hand (10.6). */
   readonly stickyFields: readonly string[];
   isSticky(field: string): boolean;
@@ -158,6 +167,10 @@ export interface EditorModel {
   setDeck(deck: string): void;
   setNoteType(name: string): void;
   setField(field: string, value: string): void;
+  /** Edit the landing area (10a.1). */
+  setScratch(text: string): void;
+  /** Put a run of the landing area into one field (10a.2). */
+  sendToField(field: string, text: string, at: Omit<SendTarget, "field">): void;
   addTag(tag: string): void;
   removeTag(tag: string): void;
   /** Returns where to leave the caret, or `undefined` if it was refused. */
@@ -362,6 +375,9 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
     get clozeTarget() {
       return clozeTargetOf();
     },
+    get stashedNoteTypes() {
+      return Object.keys(draft.stash);
+    },
     get stickyFields() {
       return stickyFieldsOf(sticky, draft.noteType.name);
     },
@@ -455,6 +471,20 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
      */
     setField(field: string, value: string): void {
       const next = setFieldOn(draft, field, sanitizeFieldHtml(value));
+      if (next.ok) apply(next.value);
+      else refuse(next.error);
+    },
+
+    setScratch(text: string): void {
+      apply(setScratchOn(draft, text));
+    },
+
+    sendToField(
+      field: string,
+      text: string,
+      at: Omit<SendTarget, "field">,
+    ): void {
+      const next = sendToFieldOn(draft, text, { field, ...at });
       if (next.ok) apply(next.value);
       else refuse(next.error);
     },
