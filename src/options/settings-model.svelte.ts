@@ -1,5 +1,5 @@
 import type { NoteType } from "@/core/note-type";
-import { hasField } from "@/core/note-type";
+import { hasField, sameNoteType } from "@/core/note-type";
 import type {
   AnkiClient,
   SettingsStore,
@@ -7,7 +7,7 @@ import type {
 } from "@/core/ports/types";
 import type { Settings, SettingsIssue } from "@/core/settings";
 import { DEFAULT_SETTINGS, validateSettings } from "@/core/settings";
-import type { SourceUrlStyle } from "@/core/source-fields";
+import type { FieldMapping, SourceUrlStyle } from "@/core/source-fields";
 import { isWellFormedTag } from "@/core/draft";
 import type { Resource } from "@/sidebar/editor-model.svelte";
 import { draftIssueCopy } from "@/sidebar/error-copy";
@@ -85,6 +85,35 @@ function withCurrent(
   current: string,
 ): readonly string[] {
   return names.includes(current) ? names : [current, ...names];
+}
+
+/** Only the fields the note type has; `""` — meaning nowhere — always keeps. */
+function mappedInto(mapping: FieldMapping, noteType: NoteType): FieldMapping {
+  const keep = (field: string) =>
+    field !== "" && hasField(noteType, field) ? field : "";
+
+  return {
+    sourceUrl: keep(mapping.sourceUrl),
+    sourceTitle: keep(mapping.sourceTitle),
+  };
+}
+
+/** The stored note type, as Anki describes it now. */
+function reconciled(
+  settings: Settings,
+  fromAnki: readonly NoteType[],
+): Settings {
+  const fresh = fromAnki.find(
+    (one) => one.name === settings.defaultNoteType.name,
+  );
+  if (fresh === undefined) return settings;
+  if (sameNoteType(fresh, settings.defaultNoteType)) return settings;
+
+  return {
+    ...settings,
+    defaultNoteType: fresh,
+    fieldMapping: mappedInto(settings.fieldMapping, fresh),
+  };
 }
 
 export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
@@ -184,6 +213,15 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
       noteTypes = models.ok
         ? { kind: "ready", value: models.value }
         : { kind: "failed", error: models.error };
+
+      // The stored descriptor is a snapshot of what Anki said when the user
+      // chose it, and a field renamed in Anki since would leave this form
+      // offering a field that no longer exists — and save the stale copy back.
+      // The sidebar reconciles the draft the same way on open (M7's risk);
+      // this is the same rule for the setting the draft starts from. A note
+      // type Anki no longer reports is left alone: it may be a collection that
+      // is not open rather than a note type that is gone.
+      if (models.ok) settings = reconciled(settings, models.value);
     },
 
     setDeck(deck: string): void {
@@ -202,16 +240,10 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
 
       // A mapping into a field the new note type does not have would be saved
       // as an issue the user cannot see the cause of, so it is cleared here.
-      const keep = (field: string) =>
-        field !== "" && hasField(chosen, field) ? field : "";
-
       apply({
         ...settings,
         defaultNoteType: chosen,
-        fieldMapping: {
-          sourceUrl: keep(settings.fieldMapping.sourceUrl),
-          sourceTitle: keep(settings.fieldMapping.sourceTitle),
-        },
+        fieldMapping: mappedInto(settings.fieldMapping, chosen),
       });
     },
 
@@ -285,7 +317,11 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
       // after an await, and this whole call runs inside the Save press.
       // Unconditional for the same reason — checking first would be the await.
       // Already-granted resolves true with no prompt.
-      const granted = deps.requestHostPermission?.(settings.endpoint);
+      // `.catch` rather than a bare call: it is awaited several statements
+      // later, and a rejection in between would be an unhandled one.
+      const granted = deps
+        .requestHostPermission?.(settings.endpoint)
+        .catch(() => false);
 
       saveState = "saving";
       const saved = await deps.settings.save(settings);

@@ -110,6 +110,13 @@ error payloads never contain the key", and what exists to assert against is
 M4's `describeAnkiConnection` and the adapter's own error payloads. Both are
 covered. The user-facing diagnostics screen is 9.3.
 
+**The options page reconciles the stored note type against Anki on load**, the
+way M7's sidebar reconciles the draft. The stored descriptor is a snapshot of
+what Anki said when the user chose it; a field renamed in Anki since would
+leave the form offering a field that no longer exists and save the stale copy
+back. A note type Anki no longer reports at all is left alone — that may be a
+collection that is not open rather than a note type that is gone.
+
 **The mapping is restrained three ways.** It skips a field the note type does
 not have (the mapping outlives any one note type, and `unknown-field` at submit
 is three layers from where it could be explained), it never overwrites a field

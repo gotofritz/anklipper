@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
 import { createFakeSettingsStore } from "@/core/ports/fakes/fake-settings-store";
+import { createNoteType } from "@/core/note-type";
 import { DEFAULT_SETTINGS } from "@/core/settings";
 import { BASIC, CLOZE, VOCAB } from "@/fixtures/note-types";
 
@@ -50,6 +51,60 @@ describe("the settings view-model", () => {
 
     expect(settingsModel.deckOptions).toEqual(["Geography"]);
     expect(settingsModel.decks.kind).toBe("failed");
+  });
+
+  // The stored descriptor is a snapshot of what Anki said when it was chosen.
+  // A field renamed in Anki since would leave the form offering a field that
+  // no longer exists, and a save would write the stale copy back.
+  it("reconciles the stored note type against Anki on load", async () => {
+    const renamed = createNoteType({
+      name: "Basic",
+      fields: ["Front", "Reverse"],
+    });
+
+    const settingsModel = model({
+      settings: createFakeSettingsStore({ defaultNoteType: BASIC }),
+      anki: createFakeAnkiClient({ decks: ["Default"], noteTypes: [renamed] }),
+    });
+    await settingsModel.load();
+
+    expect(settingsModel.settings.defaultNoteType.fields).toEqual([
+      "Front",
+      "Reverse",
+    ]);
+    expect(settingsModel.fieldOptions).toEqual(["", "Front", "Reverse"]);
+  });
+
+  it("keeps the stored note type when Anki no longer has one by that name", async () => {
+    const settingsModel = model({
+      settings: createFakeSettingsStore({ defaultNoteType: VOCAB }),
+      anki: createFakeAnkiClient({ decks: ["Default"], noteTypes: [BASIC] }),
+    });
+    await settingsModel.load();
+
+    expect(settingsModel.settings.defaultNoteType).toEqual(VOCAB);
+    expect(settingsModel.noteTypeOptions).toContain("Vocab");
+  });
+
+  it("drops a mapping the reconciled note type no longer has a field for", async () => {
+    const renamed = createNoteType({
+      name: "Basic",
+      fields: ["Front", "Reverse"],
+    });
+
+    const settingsModel = model({
+      settings: createFakeSettingsStore({
+        defaultNoteType: BASIC,
+        fieldMapping: { sourceUrl: "Back", sourceTitle: "Front" },
+      }),
+      anki: createFakeAnkiClient({ decks: ["Default"], noteTypes: [renamed] }),
+    });
+    await settingsModel.load();
+
+    expect(settingsModel.settings.fieldMapping).toEqual({
+      sourceUrl: "",
+      sourceTitle: "Front",
+    });
   });
 
   it("takes the whole note type descriptor when one is chosen, not just its name", async () => {
