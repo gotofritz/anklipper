@@ -155,6 +155,8 @@ On disk:
   works, the test that holds the generated manifest to the permission ceiling,
   and `tests/integration/`, which drives the whole flow — gesture, capture,
   panel, add — with only AnkiConnect mocked.
+- `public/` — copied verbatim to the bundle root, so an absolute `/fonts/…`
+  in CSS resolves at runtime. Holds the vendored fonts; see *Fonts* below.
 
 Tests sit beside the module they cover. ESLint enforces the bottom of the
 dependency stack: `src/core/`, `src/manifest/`, and `src/messaging/` may not
@@ -170,6 +172,51 @@ by itself. Widening permissions therefore breaks a test. The ceiling is in
 Update `docs/initial-context.md` in the same change as anything it describes:
 architecture, layer boundaries, messaging, the card model, AnkiConnect
 integration, or permissions.
+
+## Fonts
+
+MV3's content security policy blocks `fonts.googleapis.com`, so the sidebar
+skin's typefaces ship inside the extension. They sit in `public/fonts/` and are
+referenced from `src/entrypoints/sidepanel/tdr.css` by absolute path.
+
+| File | Axes / weight | Source |
+| --- | --- | --- |
+| `Archivo-Variable.woff2` | `wght` 100–900, `wdth` 62–125 | [`google/fonts`, `ofl/archivo`](https://github.com/google/fonts/tree/main/ofl/archivo) |
+| `IBMPlexMono-Regular.woff2` | 400 | [`IBM/plex`, `packages/plex-mono`](https://github.com/IBM/plex/tree/master/packages/plex-mono) |
+| `IBMPlexMono-SemiBold.woff2` | 600 | same |
+
+The `wdth` axis is the point of the variable file, not a bonus: the masthead is
+extended rather than merely bold, which is what the `font-stretch: 62% 125%`
+descriptor in the `@font-face` block unlocks for `font-stretch: 125%` on `h1`.
+A static Archivo, or the `wght`-only variable subset some font CDNs ship, would
+load without error and render the masthead at normal width.
+
+Google Fonts hands you the same variable font as
+`Archivo-VariableFont_wdth,wght.ttf` in its download zip — right font, wrong
+container and name. Convert and rename it rather than hunting for a `.woff2`
+that Google does not publish:
+
+```bash
+pip install fonttools brotli
+python3 -c "
+from fontTools.ttLib import TTFont
+f = TTFont('Archivo-VariableFont_wdth,wght.ttf')
+f.flavor = 'woff2'
+f.save('public/fonts/Archivo-Variable.woff2')
+"
+```
+
+The Plex files are already WOFF2 upstream and are the complete, unsubsetted
+faces — a card can hold whatever the user selected, so subsetting to Latin
+would leave clipped Cyrillic or Greek rendering in a fallback face.
+
+Both families are SIL Open Font License 1.1, and the licence travels with the
+font: `Archivo-OFL.txt` and `IBMPlex-OFL.txt` sit next to them in
+`public/fonts/` and ship in the bundle. Do not reformat them.
+
+`tests/assets/font-assets.test.ts` pins the three references in the stylesheet
+to real WOFF2 files. Without it a missing font is silent — there is no failing
+request to notice, just `font-display: swap` settling on Helvetica.
 
 ## Commit and CI gates
 

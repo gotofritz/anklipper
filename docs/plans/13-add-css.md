@@ -72,7 +72,8 @@ endpoint or a build serial there, add a span the CSS can pick up:
 <p role="status">{label}<span class="serial">{serial}</span></p>
 ```
 
-and replace the `p[role="status"]::after` rule with `.serial { float: right; opacity: .55 }`.
+and replace the `p[role="status"]::after` rule with
+`.serial { float: right; opacity: .55 }`.
 
 **c. `main::after` colophon.** Currently a hardcoded `content:` string
 (`ANKLIPPER／0010 ■ ▲ ● NO IDLE HANDS`). If the version should be real, render a

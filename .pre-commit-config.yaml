@@ -11,13 +11,19 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # public/fonts/ carries the vendored SIL OFL licence texts. They travel
+      # with the fonts verbatim, so nothing here may rewrite them — the
+      # size guard below still applies, which is the hook that matters there.
       - id: trailing-whitespace
+        exclude: ^public/fonts/
       - id: end-of-file-fixer
+        exclude: ^public/fonts/
       - id: check-yaml
       - id: check-json
       - id: check-merge-conflict
       - id: check-case-conflict
       - id: mixed-line-ending
+        exclude: ^public/fonts/
       - id: check-added-large-files
         args: [--maxkb=512]
 
