@@ -168,6 +168,10 @@ export function createAnkiClient(config: AnkiClientConfig): AnkiClient {
       return call("deckNames", undefined, readStringArray);
     },
 
+    async tags(): Promise<Result<readonly string[], AnkiError>> {
+      return call("getTags", undefined, readStringArray);
+    },
+
     async noteTypes(): Promise<Result<readonly NoteType[], AnkiError>> {
       const names = await call("modelNames", undefined, readStringArray);
       if (!names.ok) return names;

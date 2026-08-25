@@ -21,3 +21,13 @@ export const CLOZE = createNoteType({
   name: "Cloze",
   fields: ["Text", "Back Extra"],
 });
+
+/**
+ * The shape a real collection's note types have: several fields, in an order
+ * the collection chose and not the one an alphabetical sort would give. 10.1
+ * is only worth testing against a note type that would fail it.
+ */
+export const RECIPE = createNoteType({
+  name: "Recipe",
+  fields: ["Title", "Ingredients", "Method", "Applies to"],
+});

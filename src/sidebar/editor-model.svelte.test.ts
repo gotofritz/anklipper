@@ -6,6 +6,7 @@ import type { NoteType } from "@/core/note-type";
 import { createNoteType } from "@/core/note-type";
 import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
 import { createFakeDraftStore } from "@/core/ports/fakes/fake-draft-store";
+import { createFakeRememberedStore } from "@/core/ports/fakes/fake-remembered-store";
 import { BASIC, CLOZE, VOCAB } from "@/fixtures/note-types";
 
 import { createEditorModel } from "./editor-model.svelte";
@@ -39,11 +40,19 @@ function modelFor(
   overrides: Partial<Parameters<typeof createEditorModel>[0]> = {},
 ) {
   const drafts = createFakeDraftStore(draft);
+  const remembered = overrides.remembered ?? createFakeRememberedStore();
 
   return {
-    model: createEditorModel({ anki, draft, drafts, ...overrides }),
+    model: createEditorModel({
+      anki,
+      draft,
+      drafts,
+      ...overrides,
+      remembered,
+    }),
     anki,
     drafts,
+    remembered,
   };
 }
 
@@ -772,5 +781,333 @@ describe("reconciling the note type against Anki", () => {
     await model.load();
 
     expect(model.draft.noteType.fields).toEqual(["Front", "Back"]);
+  });
+});
+
+describe("formatting a field (10.2)", () => {
+  it("bolds the selection and leaves the rest alone", () => {
+    const { model } = modelFor();
+
+    model.format("Front", 0, 7, "b");
+
+    expect(model.draft.fields.Front).toBe("<b>Capital</b> of France?");
+  });
+
+  it("toggles the mark off when the selection already carries it", () => {
+    const { model } = modelFor();
+
+    model.format("Front", 0, 7, "b");
+    model.format("Front", 0, 7, "b");
+
+    expect(model.draft.fields.Front).toBe("Capital of France?");
+  });
+
+  it("says whether a selection is already marked, for the button's state", () => {
+    const { model } = modelFor();
+
+    expect(model.isMarked("Front", 0, 7, "b")).toBe(false);
+    model.format("Front", 0, 7, "b");
+    expect(model.isMarked("Front", 0, 7, "b")).toBe(true);
+  });
+
+  it("clears every mark over the selection", () => {
+    const { model } = modelFor();
+
+    model.format("Front", 0, 7, "b");
+    model.format("Front", 0, 7, "i");
+    model.clearFormat("Front", 0, 7);
+
+    expect(model.draft.fields.Front).toBe("Capital of France?");
+  });
+
+  it("ignores a field the note type does not have", () => {
+    const { model } = modelFor();
+
+    model.format("Nope", 0, 1, "b");
+
+    expect(model.draft.fields.Nope).toBeUndefined();
+  });
+
+  // 10.5: whatever route content takes into a field, it arrives sanitised.
+  it("sanitises what is set into a field", () => {
+    const { model } = modelFor();
+
+    model.setField("Front", '<b onclick="x()">bold</b><script>evil()</script>');
+
+    expect(model.draft.fields.Front).toBe("<b>bold</b>");
+  });
+});
+
+describe("cloze under a field that holds markup", () => {
+  it("keeps the formatting inside the deletion", () => {
+    const { model } = modelFor(CLOZE_DRAFT);
+
+    model.format("Text", 0, 5, "b");
+    model.markCloze(0, 5);
+
+    expect(model.draft.fields.Text).toBe(
+      "{{c1::<b>Paris</b>}} is the capital of France.",
+    );
+  });
+
+  it("counts the deletions through the markup", () => {
+    const { model } = modelFor(CLOZE_DRAFT);
+
+    model.format("Text", 0, 5, "b");
+    model.markCloze(0, 5);
+
+    expect(model.deletions.map((one) => one.answer)).toEqual(["Paris"]);
+    expect(model.nextOrdinal).toBe(2);
+  });
+});
+
+describe("the collection's tags (10.9)", () => {
+  it("has asked for nothing before it loads", () => {
+    const { model } = modelFor();
+
+    expect(model.knownTags.kind).toBe("idle");
+  });
+
+  it("offers the tags Anki reported", async () => {
+    const { model } = modelFor(
+      BASIC_DRAFT,
+      createFakeAnkiClient({
+        decks: ["Geography"],
+        noteTypes: [BASIC],
+        tags: ["europe", "geo::capitals"],
+      }),
+    );
+
+    await model.load();
+
+    expect(model.knownTags).toEqual({
+      kind: "ready",
+      value: ["europe", "geo::capitals"],
+    });
+  });
+
+  // Completion is a convenience. A collection that will not report its tags
+  // must not stop a card being made.
+  it("survives a collection that will not report them", async () => {
+    const anki = createFakeAnkiClient({ decks: ["Geography"] });
+    anki.failWith({ kind: "anki-not-running", message: "refused" });
+    const { model } = modelFor(BASIC_DRAFT, anki);
+
+    await model.load();
+
+    expect(model.knownTags.kind).toBe("failed");
+    expect(model.issues).toEqual([]);
+  });
+});
+
+describe("sticky fields (10.6)", () => {
+  it("pins a field and remembers what it holds", async () => {
+    const { model, remembered } = modelFor();
+
+    model.setField("Back", "Source: Wikipedia");
+    await model.toggleSticky("Back");
+
+    expect(model.isSticky("Back")).toBe(true);
+    const stored = await remembered.load();
+    expect(stored.ok && stored.value.sticky).toEqual({
+      Basic: { Back: "Source: Wikipedia" },
+    });
+  });
+
+  it("unpins on a second press", async () => {
+    const { model } = modelFor();
+
+    await model.toggleSticky("Back");
+    await model.toggleSticky("Back");
+
+    expect(model.isSticky("Back")).toBe(false);
+  });
+
+  it("carries a pinned field into the card it opens with", async () => {
+    const { model } = modelFor(BASIC_DRAFT, undefined, {
+      remembered: createFakeRememberedStore({
+        sticky: { Basic: { Back: "Source: Wikipedia" } },
+      }),
+    });
+
+    await model.load();
+
+    expect(model.draft.fields.Back).toBe("Source: Wikipedia");
+    expect(model.draft.fields.Front).toBe("Capital of France?");
+  });
+
+  it("carries nothing for a field that is not pinned", async () => {
+    const { model } = modelFor();
+
+    await model.load();
+
+    expect(model.draft.fields.Back).toBe("");
+  });
+
+  it("notes what the pinned fields held once the card is in Anki", async () => {
+    const { model, remembered } = modelFor(BASIC_DRAFT, undefined, {
+      remembered: createFakeRememberedStore({
+        sticky: { Basic: { Back: "" } },
+      }),
+    });
+
+    model.setField("Back", "Source: Wikipedia");
+    await model.submit();
+
+    const stored = await remembered.load();
+    expect(stored.ok && stored.value.sticky).toEqual({
+      Basic: { Back: "Source: Wikipedia" },
+    });
+  });
+
+  it("names the pinned fields of the note type in hand", async () => {
+    const { model } = modelFor(BASIC_DRAFT, undefined, {
+      remembered: createFakeRememberedStore({
+        sticky: { Basic: { Back: "x" }, Vocab: { Example: "y" } },
+      }),
+    });
+
+    await model.load();
+
+    expect(model.stickyFields).toEqual(["Back"]);
+  });
+});
+
+describe("the duplicate, on the first field (10.8)", () => {
+  it("names the field to highlight rather than raising a banner", async () => {
+    const { model } = modelFor(
+      BASIC_DRAFT,
+      createFakeAnkiClient({
+        decks: ["Geography"],
+        noteTypes: [BASIC],
+        duplicates: ["Capital of France?"],
+      }),
+    );
+
+    await model.load();
+
+    expect(model.duplicateField).toBe("Front");
+  });
+
+  it("names nothing when the card is not a duplicate", async () => {
+    const { model } = modelFor();
+
+    await model.load();
+
+    expect(model.duplicateField).toBeUndefined();
+  });
+});
+
+describe("the landing area (10a.1)", () => {
+  it("holds what the capture put there", () => {
+    const { model } = modelFor(draftOf(BASIC, { Front: "Capital of France?" }));
+
+    expect(model.draft.scratch).toBe("");
+  });
+
+  it("takes what is typed into it", () => {
+    const { model } = modelFor();
+
+    model.setScratch("Paris is the capital of France.");
+
+    expect(model.draft.scratch).toBe("Paris is the capital of France.");
+  });
+
+  // The complaint this exists for: Basic and Cloze share no field name, so
+  // the switch stashes every field (3.2) and the fields all render empty.
+  it("survives a note-type change that empties every field", async () => {
+    const { model } = modelFor();
+    model.setScratch("Paris is the capital of France.");
+    await model.load();
+
+    model.setNoteType("Cloze");
+
+    expect(model.draft.fields).toEqual({ Text: "", "Back Extra": "" });
+    expect(model.draft.scratch).toBe("Paris is the capital of France.");
+  });
+
+  it("is persisted like any other edit (7.1)", async () => {
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 0,
+    });
+
+    model.setScratch("kept");
+    await model.flush();
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.scratch).toBe("kept");
+  });
+});
+
+describe("sending a selection into a field (10a.2)", () => {
+  function withScratch() {
+    const made = modelFor();
+    made.model.setScratch("Paris is the capital of France.");
+    return made;
+  }
+
+  it("puts the selected run into the field named", () => {
+    const { model } = withScratch();
+
+    model.sendToField("Back", "Paris", {});
+
+    expect(model.draft.fields.Back).toBe("Paris");
+  });
+
+  it("inserts at a range when one is given", () => {
+    const { model } = withScratch();
+    model.setField("Back", "the city of ");
+
+    model.sendToField("Back", "Paris", { start: 12, end: 12 });
+
+    expect(model.draft.fields.Back).toBe("the city of Paris");
+  });
+
+  it("replaces the whole field when that is what was asked for", () => {
+    const { model } = withScratch();
+    model.setField("Back", "wrong");
+
+    model.sendToField("Back", "Paris", { start: 0, end: 0, replace: true });
+
+    expect(model.draft.fields.Back).toBe("Paris");
+  });
+
+  it("says why it refused a field the note type does not have", () => {
+    const { model } = withScratch();
+
+    model.sendToField("Nope", "Paris", {});
+
+    expect(model.notice).toMatch(/no field called Nope/i);
+  });
+
+  it("leaves the landing area alone", () => {
+    const { model } = withScratch();
+
+    model.sendToField("Back", "Paris", {});
+
+    expect(model.draft.scratch).toBe("Paris is the capital of France.");
+  });
+});
+
+describe("saying what a note-type change put away (3.2)", () => {
+  it("names the note type whose content was stashed", async () => {
+    const { model } = modelFor();
+    await model.load();
+
+    expect(model.stashedNoteTypes).toEqual([]);
+
+    model.setNoteType("Cloze");
+
+    expect(model.stashedNoteTypes).toEqual(["Basic"]);
+  });
+
+  it("stops naming it once the content has come back", async () => {
+    const { model } = modelFor();
+    await model.load();
+
+    model.setNoteType("Cloze");
+    model.setNoteType("Basic");
+
+    expect(model.stashedNoteTypes).toEqual([]);
   });
 });

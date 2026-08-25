@@ -8,7 +8,7 @@ For what the extension does and how to use it, see the
 
 ## Where things stand
 
-M8 has landed. The flow works end to end — select text, choose **Create Anki
+M10 has landed. The flow works end to end — select text, choose **Create Anki
 Card**, edit the card in the sidebar, add it, and it is in Anki — and what it
 starts from is now the user's, not a constant.
 
@@ -35,8 +35,29 @@ the runner that goes in front of it; `src/platform/settings-store.ts` and
 components. The AnkiConnect endpoint, timeout, and optional API key come from
 there too, and the deck a card went into is remembered for the next capture.
 
+M10 made the sidebar a real Anki note editor rather than a two-field
+approximation. Fields hold HTML, as Anki's own do, and are edited in a
+`contenteditable` with Anki's formatting toolbar and Anki's shortcuts; each
+one has an HTML source view and a sticky pin. `src/core/field-html.ts` is the
+one module that decides what a field's HTML may contain — an allowlist applied
+by rebuilding rather than filtering — and the runs it parses into are also the
+coordinate system that lets `src/core/field-cloze.ts` splice cloze braces into
+markup without the model changing at all. Deck and note-type pickers filter,
+tags complete from the collection, and a duplicate is shown on the first field
+rather than as a banner.
+
+M10a followed it, on the same branch, from the first real use: changing note
+type looked like it threw the selected text away. It did not — 3.2 stashes
+what a switch cannot carry — but Basic and Cloze share no field name, so the
+switch emptied every field and nothing said why. `CardDraft.scratch` is the
+answer: the selected text, plain, outside the field map, rendered as a
+landing area above the note type and never touched by a note-type change.
+Fields are filled from it by `sendToField`, and the stash is now named rather
+than silent.
+
 Still to come: onboarding for the host permission, and connection diagnostics
-(M9).
+(M9) — which M10 did not wait for, since nothing in it depends on M9's
+onboarding flow.
 
 `docs/initial-context.md` is the authoritative description of that
 architecture. Read it before changing a layer boundary, a message shape, or a
@@ -87,7 +108,9 @@ port ships an in-memory fake, and that is what tests run against.
 - **Card model** — `CardDraft` and its transitions, in `src/core/`. Pure
   TypeScript, no browser, no network. Cloze markup lives here too: deletions
   are `{{c1::…}}` text, so producing and parsing them is string work, not UI
-  work.
+  work. So is field HTML: what a field may contain, what formatting a range
+  carries, and what a paste is reduced to are all pure functions in
+  `field-html.ts`, never a call to a browser editing command.
 - **Card generation** — selected text plus page context to a `CardDraft`.
 - **Content/page layer** — selection and page-context extraction.
 - **Extension/background layer** — lifecycle, messaging, browser APIs.
@@ -114,8 +137,9 @@ On disk:
 - `src/background/`, `src/content/`, `src/sidebar/` — what each context does,
   outside the entrypoint that starts it.
 - `src/core/` — framework-independent domain code: the `Result` type, the card
-  model — `note-type.ts`, `draft.ts`, `cloze.ts`, `validate.ts`, `capture.ts`,
-  `generate.ts`, `source-fields.ts` — and the settings schema,
+  model — `note-type.ts`, `draft.ts`, `cloze.ts`, `field-html.ts`,
+  `field-cloze.ts`, `sticky.ts`, `validate.ts`, `capture.ts`, `generate.ts`,
+  `source-fields.ts` — and the settings schema,
   `settings.ts` with `settings-migrations.ts`. `src/core/ports/` declares the
   `AnkiClient`, `DraftStore`, `SettingsStore`, and `RememberedStore`
   interfaces, with an in-memory fake for each under `ports/fakes/`. The fakes
@@ -209,9 +233,17 @@ A test opts into jsdom by its filename: `*.svelte.test.ts` or `*.dom.test.ts`.
 Everything else runs in node.
 
 A **module** that needs a document is named `*.dom.ts` for the same reason —
-`src/content/extract.dom.ts` is the one — so that its stem-matching test
-(`extract.dom.test.ts`) lands in the jsdom project and the TDD hook still
-finds it. The suffix is the marker: anything without it must run in node.
+`src/content/extract.dom.ts` and `src/sidebar/selection.dom.ts` are the two —
+so that its stem-matching test (`extract.dom.test.ts`) lands in the jsdom
+project and the TDD hook still finds it. The suffix is the marker: anything
+without it must run in node.
+
+That split is also a design rule, not only a plumbing one. `selection.dom.ts`
+measures a `contenteditable`'s selection and hands back text offsets;
+everything done *with* those offsets — formatting, cloze marking, pasting — is
+pure and lives in `src/core/`, tested in node. So a rich editor built on the
+least pleasant API in the browser still has almost all of its behaviour
+provable without one.
 
 A **module that uses runes** is named `*.svelte.ts` —
 `src/sidebar/editor-model.svelte.ts` is the one — because `$state` outside a
@@ -457,15 +489,24 @@ wrong and offers **Try again**. Editing, tagging, and cloze marking all work
 in that state; adding does not. Grant the permission and press **Try again**,
 and the lists fill.
 
-Two things need eyes rather than a test:
+Four things need eyes rather than a test:
 
 - **The layout at a narrow width.** jsdom has no layout engine, so nothing in
   the suite can see a horizontal scrollbar. Drag the sidebar as narrow as
-  Firefox allows and check that nothing overflows sideways.
+  Firefox allows and check that nothing overflows sideways — the toolbar and
+  the per-field buttons are the new pressure on this.
 - **The whole flow from the keyboard.** Tab through every control, mark a
   cloze deletion with `Ctrl+Shift+C`, and add the card with `Ctrl+Enter`.
   Nothing discards the card from the keyboard: **Discard card** is a button,
   because emptying the slot has no undo.
+- **The chords the browser also wants.** `Ctrl+B` is Firefox's bookmarks
+  sidebar and `Ctrl+U` is view-source; both are claimed with `preventDefault`
+  and neither should reach the browser from inside a field. `Ctrl+R` is
+  deliberately *not* claimed, so it still reloads.
+- **Typing and pasting in a real `contenteditable`.** jsdom does no editing of
+  its own, so the suite drives the element rather than the browser. Type into
+  a field with the caret mid-word, paste a formatted excerpt from a real page,
+  and check that what lands in Anki is the formatting and nothing else.
 
 ### 8. The whole flow, against a real Anki
 

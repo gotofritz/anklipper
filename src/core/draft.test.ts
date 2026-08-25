@@ -13,9 +13,11 @@ import {
   noteTypeKindOf,
   refreshNoteType,
   removeTag,
+  sendToField,
   setDeck,
   setField,
   setNoteType,
+  setScratch,
 } from "./draft";
 import type { CardDraft } from "./draft";
 import { isErr, isOk } from "./result";
@@ -276,6 +278,19 @@ describe("convertFromCloze", () => {
     }
   });
 
+  it("keeps the formatting when it strips the markup", () => {
+    const cloze = draft({
+      noteType: CLOZE,
+      fields: { Text: "{{c1::<b>Paris</b>}} is the capital." },
+    });
+    const result = convertFromCloze(cloze, BASIC);
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.fields.Front).toBe("<b>Paris</b> is the capital.");
+    }
+  });
+
   it("refuses to convert a draft that is not cloze", () => {
     const result = convertFromCloze(draft(), VOCAB);
 
@@ -289,6 +304,163 @@ describe("convertFromCloze", () => {
 
     expect(isErr(result)).toBe(true);
     if (isErr(result)) expect(result.error.code).toBe("note-type-not-standard");
+  });
+});
+
+describe("fields that hold markup (10.2)", () => {
+  // A field a user has emptied still looks like markup — `<br>` is what a
+  // `contenteditable` leaves behind — and the stash exists for content the
+  // user still has, not for content they threw away.
+  it("clearing a field to bare markup still clears its stash", () => {
+    const stashed = setNoteType(
+      setNoteType(unwrap(setField(draft(), "Back", "Paris")), VOCAB),
+      BASIC,
+    );
+    expect(stashed.fields.Back).toBe("Paris");
+
+    const cleared = unwrap(setField(stashed, "Back", "<br>"));
+    expect(setNoteType(setNoteType(cleared, VOCAB), BASIC).fields.Back).toBe(
+      "",
+    );
+  });
+
+  it("does not stash a field holding nothing but markup", () => {
+    const blank = unwrap(setField(draft(), "Back", "<br>"));
+
+    expect(setNoteType(blank, VOCAB).stash).toEqual({});
+  });
+});
+
+describe("the landing area (10a.1)", () => {
+  it("starts as the text the capture put in it", () => {
+    expect(draft({ scratch: "Paris is the capital." }).scratch).toBe(
+      "Paris is the capital.",
+    );
+  });
+
+  it("is empty when nothing seeded it", () => {
+    expect(draft().scratch).toBe("");
+  });
+
+  it("is replaced whole, leaving the input alone (3.3)", () => {
+    const before = draft({ scratch: "one" });
+    const after = setScratch(before, "two");
+
+    expect(after.scratch).toBe("two");
+    expect(before.scratch).toBe("one");
+  });
+
+  // The whole point: a note-type change stashes the fields (3.2), and the
+  // text the user selected must not go with them.
+  it("survives a note-type change that stashes every field", () => {
+    const captured = draft({ scratch: "Paris is the capital." });
+    const switched = setNoteType(captured, CLOZE);
+
+    expect(switched.fields).toEqual({ Text: "", "Back Extra": "" });
+    expect(switched.scratch).toBe("Paris is the capital.");
+  });
+
+  it("survives a note type re-read from Anki", () => {
+    const captured = draft({ scratch: "kept" });
+    const renamed = createNoteType({
+      name: "Basic",
+      fields: ["Front", "Reverse"],
+    });
+
+    expect(refreshNoteType(captured, renamed).scratch).toBe("kept");
+  });
+});
+
+describe("sending a selection to a field (10a.2)", () => {
+  const captured = () =>
+    draft({
+      scratch: "Paris is the capital of France.",
+      fields: { Front: "" },
+    });
+
+  it("fills an empty field", () => {
+    const sent = sendToField(captured(), "Paris", { field: "Front" });
+
+    expect(isOk(sent) && sent.value.fields.Front).toBe("Paris");
+  });
+
+  it("escapes what it sends, since a field is HTML (10.2)", () => {
+    const sent = sendToField(captured(), "5 < 6", { field: "Front" });
+
+    expect(isOk(sent) && sent.value.fields.Front).toBe("5 &lt; 6");
+  });
+
+  it("keeps the line breaks of what was selected", () => {
+    const sent = sendToField(captured(), "one\ntwo", { field: "Front" });
+
+    expect(isOk(sent) && sent.value.fields.Front).toBe("one<br>two");
+  });
+
+  // The checkbox off: the selection lands where the caret was left.
+  it("inserts at the range it is given", () => {
+    const before = unwrap(setField(captured(), "Front", "Capital of ?"));
+    const sent = sendToField(before, "France", {
+      field: "Front",
+      start: 11,
+      end: 11,
+    });
+
+    expect(isOk(sent) && sent.value.fields.Front).toBe("Capital of France?");
+  });
+
+  it("replaces the range it is given when that range is a selection", () => {
+    const before = unwrap(setField(captured(), "Front", "Capital of Spain?"));
+    const sent = sendToField(before, "France", {
+      field: "Front",
+      start: 11,
+      end: 16,
+    });
+
+    expect(isOk(sent) && sent.value.fields.Front).toBe("Capital of France?");
+  });
+
+  it("appends when no range is given, rather than overwriting", () => {
+    const before = unwrap(setField(captured(), "Front", "Capital of "));
+    const sent = sendToField(before, "France", { field: "Front" });
+
+    expect(isOk(sent) && sent.value.fields.Front).toBe("Capital of France");
+  });
+
+  it("keeps the formatting around what it inserts", () => {
+    const before = unwrap(setField(captured(), "Front", "<b>Capital</b> of "));
+    const sent = sendToField(before, "France", { field: "Front" });
+
+    expect(isOk(sent) && sent.value.fields.Front).toBe(
+      "<b>Capital</b> of France",
+    );
+  });
+
+  // The checkbox on.
+  it("replaces the whole field when asked to", () => {
+    const before = unwrap(setField(captured(), "Front", "<b>anything</b>"));
+    const sent = sendToField(before, "France", {
+      field: "Front",
+      start: 3,
+      end: 3,
+      replace: true,
+    });
+
+    expect(isOk(sent) && sent.value.fields.Front).toBe("France");
+  });
+
+  it("refuses a field the note type does not have", () => {
+    const sent = sendToField(captured(), "Paris", { field: "Nope" });
+
+    expect(isErr(sent)).toBe(true);
+    if (isErr(sent)) expect(sent.error.code).toBe("unknown-field");
+  });
+
+  it("leaves the landing area as it was", () => {
+    const sent = sendToField(captured(), "Paris", { field: "Front" });
+
+    expect(isOk(sent) && sent.value.scratch).toBe(
+      "Paris is the capital of France.",
+    );
   });
 });
 

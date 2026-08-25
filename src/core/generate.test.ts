@@ -40,6 +40,49 @@ describe("generateBasicCard", () => {
     });
   });
 
+  // 10.3: capture stays plain text, and a field holds HTML from M10 — so the
+  // one thing generation must do is make sure the page's text cannot become
+  // the collection's markup.
+  it("escapes the selection rather than letting it be markup", () => {
+    const draft = generateBasicCard(
+      { text: "<script>alert(1)</script> & <b>bold</b>" },
+      CONTEXT,
+      DEFAULTS,
+      { now: AT },
+    );
+
+    expect(draft.fields.Front).toBe(
+      "&lt;script&gt;alert(1)&lt;/script&gt; &amp; &lt;b&gt;bold&lt;/b&gt;",
+    );
+  });
+
+  it("keeps the selection's line breaks as breaks", () => {
+    const draft = generateBasicCard({ text: "one\ntwo" }, CONTEXT, DEFAULTS, {
+      now: AT,
+    });
+
+    expect(draft.fields.Front).toBe("one<br>two");
+  });
+
+  // 10a.1: the landing area starts as what was selected, so a note-type
+  // change that stashes every field still leaves the text on screen.
+  it("seeds the landing area with the selection", () => {
+    const draft = generateBasicCard(SELECTION, CONTEXT, DEFAULTS, { now: AT });
+
+    expect(draft.scratch).toBe("Paris is the capital of France.");
+  });
+
+  it("leaves the landing area as plain text (5.2, 10.3)", () => {
+    const draft = generateBasicCard(
+      { text: "<b>Paris</b> & Lyon" },
+      CONTEXT,
+      DEFAULTS,
+      { now: AT },
+    );
+
+    expect(draft.scratch).toBe("<b>Paris</b> & Lyon");
+  });
+
   it("takes the deck, note type, and tags from the defaults", () => {
     const draft = generateBasicCard(SELECTION, CONTEXT, DEFAULTS, { now: AT });
 

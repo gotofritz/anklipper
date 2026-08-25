@@ -9,7 +9,14 @@ import { BASIC } from "@/fixtures/note-types";
 
 import { createFakeRememberedStore } from "@/core/ports/fakes/fake-remembered-store";
 
-import { dismissPending, rememberDeck, takePending } from "./session";
+import {
+  dismissPending,
+  rememberDeck,
+  rememberSticky,
+  setStickyPin,
+  takePending,
+  updateRemembered,
+} from "./session";
 
 function draftOf(title: string, createdAt: string): CardDraft {
   return createDraft({
@@ -138,5 +145,70 @@ describe("rememberDeck", () => {
     remembered.failWith({ kind: "write-failed", message: "storage full" });
 
     expect((await rememberDeck(remembered, "Geography")).ok).toBe(false);
+  });
+});
+
+describe("what one remembered value does to another", () => {
+  // Both the deck and the pins live under one key (8.5, 10.6), so a write
+  // that replaced the whole value would quietly cost whichever the other
+  // caller had just made.
+  it("keeps the pins when the deck is remembered", async () => {
+    const remembered = createFakeRememberedStore({
+      sticky: { Basic: { Back: "Source: Wikipedia" } },
+    });
+
+    await rememberDeck(remembered, "Spanish::Verbs");
+
+    const stored = await remembered.load();
+    expect(stored.ok && stored.value).toEqual({
+      lastDeck: "Spanish::Verbs",
+      sticky: { Basic: { Back: "Source: Wikipedia" } },
+    });
+  });
+
+  it("keeps the deck when a pin is set", async () => {
+    const remembered = createFakeRememberedStore({ lastDeck: "Geography" });
+
+    await setStickyPin(remembered, "Basic", "Back", "note", true);
+
+    const stored = await remembered.load();
+    expect(stored.ok && stored.value).toEqual({
+      lastDeck: "Geography",
+      sticky: { Basic: { Back: "note" } },
+    });
+  });
+
+  it("unpins without disturbing the rest", async () => {
+    const remembered = createFakeRememberedStore({
+      lastDeck: "Geography",
+      sticky: { Basic: { Back: "note", Front: "kept" } },
+    });
+
+    await setStickyPin(remembered, "Basic", "Back", "", false);
+
+    const stored = await remembered.load();
+    expect(stored.ok && stored.value.sticky).toEqual({
+      Basic: { Front: "kept" },
+    });
+  });
+
+  it("records what the pinned fields held on the card that was added", async () => {
+    const remembered = createFakeRememberedStore({
+      sticky: { Basic: { Back: "" } },
+    });
+
+    await rememberSticky(remembered, draftOf("Paris", "2026-01-01T00:00:00Z"));
+
+    const stored = await remembered.load();
+    expect(stored.ok && stored.value.sticky).toEqual({ Basic: { Back: "" } });
+  });
+
+  it("reports a read it could not make", async () => {
+    const remembered = createFakeRememberedStore();
+    remembered.failWith({ kind: "read-failed", message: "storage said no" });
+
+    const result = await updateRemembered(remembered, (current) => current);
+
+    expect(result.ok).toBe(false);
   });
 });

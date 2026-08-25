@@ -1,6 +1,7 @@
-import { findMalformedCloze, parseCloze } from "./cloze";
 import type { CardDraft, DraftIssue } from "./draft";
 import { isWellFormedTag } from "./draft";
+import { fieldDeletions, findMalformedClozeInField } from "./field-cloze";
+import { isFieldEmpty } from "./field-html";
 import { hasField, primaryFieldOf } from "./note-type";
 
 /**
@@ -36,7 +37,10 @@ export function validateDraft(draft: CardDraft): readonly DraftIssue[] {
   }
 
   for (const field of draft.noteType.requiredFields) {
-    if ((draft.fields[field] ?? "").trim() === "") {
+    // A field is HTML from M10 (10.2), so "empty" is about what it says and
+    // not about how long it is: a `contenteditable` the user emptied is left
+    // holding a `<br>`.
+    if (isFieldEmpty(draft.fields[field] ?? "")) {
       issues.push({
         code: "field-required",
         message: `${field} may not be empty`,
@@ -74,14 +78,14 @@ function clozeIssues(draft: CardDraft): readonly DraftIssue[] {
 
   // Malformed markup is reported on its own: how many deletions the field
   // holds is exactly what cannot be known while it does not parse (3.11).
-  const malformed = findMalformedCloze(text);
+  const malformed = findMalformedClozeInField(text);
   if (malformed) {
     return [
       { code: "cloze-markup-malformed", message: malformed.message, field },
     ];
   }
 
-  if (parseCloze(text).length === 0) {
+  if (fieldDeletions(text).length === 0) {
     return [
       {
         code: "cloze-no-deletions",

@@ -2,9 +2,11 @@ import type { CardDraft } from "../draft";
 import type { NoteType } from "../note-type";
 import type { Result } from "../result";
 import type { Settings } from "../settings";
+import type { StickyFields } from "../sticky";
 
 export type { Settings } from "../settings";
 export { DEFAULT_SETTINGS } from "../settings";
+export type { StickyFields } from "../sticky";
 
 /**
  * The ports the domain layer talks to (3.5, P3). Interfaces only: the real
@@ -69,6 +71,12 @@ export interface AnkiClient {
   probe(): Promise<AnkiConnection>;
   deckNames(): Promise<Result<readonly string[], AnkiError>>;
   noteTypes(): Promise<Result<readonly NoteType[], AnkiError>>;
+  /**
+   * Every tag the collection already holds, for the tag editor's completion
+   * (10.9). A convenience, so a failure here is reported and never fatal: a
+   * card can be made with a tag Anki has not seen before.
+   */
+  tags(): Promise<Result<readonly string[], AnkiError>>;
   /** Whether the note could be added — duplicate detection, non-blocking (4.4). */
   canAddNote(draft: CardDraft): Promise<Result<boolean, AnkiError>>;
   addNote(draft: CardDraft): Promise<Result<NoteId, AnkiError>>;
@@ -130,6 +138,8 @@ export interface SettingsStore {
 export interface Remembered {
   /** The deck the last card actually went into. */
   readonly lastDeck?: string;
+  /** Which fields are pinned, and what they last held (10.6). */
+  readonly sticky?: StickyFields;
 }
 
 export type RememberedStoreError = StoreError;

@@ -10,6 +10,8 @@ export interface FakeAnkiClientOptions {
   readonly noteTypes?: readonly NoteType[];
   /** Primary-field values Anki is pretending to hold already. */
   readonly duplicates?: readonly string[];
+  /** The tags the pretend collection already holds (10.9). */
+  readonly tags?: readonly string[];
   /** What the version probe reports when the fake is not failing (4.9). */
   readonly apiVersion?: number;
 }
@@ -32,6 +34,7 @@ export function createFakeAnkiClient(
   const decks = [...(options.decks ?? ["Default"])];
   const noteTypes = [...(options.noteTypes ?? [])];
   const duplicates = new Set(options.duplicates ?? []);
+  const tags = [...(options.tags ?? [])];
   const apiVersion = options.apiVersion ?? 6;
   const added: CardDraft[] = [];
   let failure: AnkiError | undefined;
@@ -64,6 +67,10 @@ export function createFakeAnkiClient(
 
     async noteTypes(): Promise<Result<readonly NoteType[], AnkiError>> {
       return refuse<readonly NoteType[]>() ?? ok(noteTypes);
+    },
+
+    async tags(): Promise<Result<readonly string[], AnkiError>> {
+      return refuse<readonly string[]>() ?? ok(tags);
     },
 
     async canAddNote(draft: CardDraft): Promise<Result<boolean, AnkiError>> {

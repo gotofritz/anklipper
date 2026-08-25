@@ -66,6 +66,25 @@ function draftWith(warnings?: readonly CaptureWarning[]) {
   });
 }
 
+/**
+ * A field is a `contenteditable` from M10 (10.2): reached by its role, and
+ * read by what it holds rather than by a form control's value.
+ */
+function fieldOf(name: string): HTMLElement {
+  return screen.getByRole("textbox", { name });
+}
+
+function findField(name: string): Promise<HTMLElement> {
+  return screen.findByRole("textbox", { name });
+}
+
+/** What the user typed, as the browser would leave it in the element. */
+async function typeInto(name: string, html: string) {
+  const node = fieldOf(name);
+  node.innerHTML = html;
+  await fireEvent.input(node);
+}
+
 describe("sidebar panel", () => {
   it("names the extension", () => {
     renderPanel({
@@ -134,7 +153,7 @@ describe("the captured draft", () => {
       subscribe: noChanges,
     });
 
-    expect(await screen.findByLabelText("Front")).toHaveValue(
+    expect(await findField("Front")).toHaveTextContent(
       "Paris is the capital of France.",
     );
     expect(screen.getByText("France — Example")).toBeInTheDocument();
@@ -202,7 +221,7 @@ describe("a capture while the panel is open", () => {
     status = { kind: "captured", draft: draftWith(), pending: undefined };
     notify();
 
-    expect(await screen.findByLabelText("Front")).toHaveValue(
+    expect(await findField("Front")).toHaveTextContent(
       "Paris is the capital of France.",
     );
   });
@@ -293,7 +312,7 @@ describe("a second selection while a card is open", () => {
     expect(
       await screen.findByText(/newer selection is waiting/i),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Front")).toHaveValue(
+    expect(fieldOf("Front")).toHaveTextContent(
       "Paris is the capital of France.",
     );
   });
@@ -307,7 +326,7 @@ describe("a second selection while a card is open", () => {
     );
     await reread();
 
-    expect(await screen.findByLabelText("Front")).toHaveValue(
+    expect(await findField("Front")).toHaveTextContent(
       "Berlin is the capital of Germany.",
     );
     const stored = await drafts.load();
@@ -327,7 +346,7 @@ describe("a second selection while a card is open", () => {
     );
     await reread();
 
-    expect(screen.getByLabelText("Front")).toHaveValue(
+    expect(fieldOf("Front")).toHaveTextContent(
       "Paris is the capital of France.",
     );
     const stored = await drafts.load();
@@ -358,7 +377,7 @@ describe("after the card has been added", () => {
       },
     });
     await drafts.save(draftWith());
-    await screen.findByLabelText("Front");
+    await findField("Front");
 
     await fireEvent.click(screen.getByRole("button", { name: /add card/i }));
     await vi.waitFor(async () => {
@@ -371,7 +390,7 @@ describe("after the card has been added", () => {
     await vi.waitFor(() =>
       expect(screen.getByText(/added to anki/i)).toBeInTheDocument(),
     );
-    expect(screen.queryByLabelText("Front")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Front" })).toBeNull();
   });
 
   it("opens the selection that was waiting behind it", async () => {
@@ -392,7 +411,7 @@ describe("after the card has been added", () => {
     });
     await drafts.save(draftWith());
     await pending.save(waiting);
-    await screen.findByLabelText("Front");
+    await findField("Front");
 
     await fireEvent.click(screen.getByRole("button", { name: /add card/i }));
     await vi.waitFor(async () => {
@@ -407,7 +426,7 @@ describe("after the card has been added", () => {
     notify();
 
     await vi.waitFor(() =>
-      expect(screen.getByLabelText("Front")).toHaveValue(
+      expect(fieldOf("Front")).toHaveTextContent(
         "Berlin is the capital of Germany.",
       ),
     );
@@ -435,16 +454,14 @@ describe("re-reading while the user is editing", () => {
         return () => {};
       },
     });
-    await screen.findByLabelText("Front");
+    await findField("Front");
 
-    await fireEvent.input(screen.getByLabelText("Back"), {
-      target: { value: "Paris" },
-    });
+    await typeInto("Back", "Paris");
     // The same capture, read back from the store as the editor last wrote it.
     status = { kind: "captured", draft: draftWith(), pending: undefined };
     notify();
 
-    expect(await screen.findByLabelText("Back")).toHaveValue("Paris");
+    expect(await findField("Back")).toHaveTextContent("Paris");
   });
 
   it("remounts for a capture that is a different one", async () => {
@@ -462,13 +479,13 @@ describe("re-reading while the user is editing", () => {
         return () => {};
       },
     });
-    await screen.findByLabelText("Front");
+    await findField("Front");
 
     status = { kind: "captured", draft: otherDraft(), pending: undefined };
     notify();
 
     await vi.waitFor(() =>
-      expect(screen.getByLabelText("Front")).toHaveValue(
+      expect(fieldOf("Front")).toHaveTextContent(
         "Berlin is the capital of Germany.",
       ),
     );
@@ -510,7 +527,7 @@ describe("settings, from the panel", () => {
       subscribe: noChanges,
     });
     await drafts.save(draftWith());
-    await screen.findByLabelText("Front");
+    await findField("Front");
 
     await fireEvent.click(screen.getByRole("button", { name: /add card/i }));
 
@@ -531,7 +548,7 @@ describe("settings, from the panel", () => {
       subscribe: noChanges,
     });
     await drafts.save(draftWith());
-    await screen.findByLabelText("Front");
+    await findField("Front");
 
     await fireEvent.click(
       screen.getByRole("button", { name: /discard card/i }),

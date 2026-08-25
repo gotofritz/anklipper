@@ -26,6 +26,8 @@ subplan and saying so here, per `AGENTS.md`.
 | P8 | **The extension's own origin is read at runtime, never hardcoded.** Firefox's `moz-extension://<uuid>` is per installation | M2, M9 | Low, but no constant is correct for two users |
 | P9 | ~~Onboarding uses AnkiConnect's `requestPermission` handshake~~ — **reversed at M4** on evidence: the add-on does not enforce `webCorsOriginList` server-side, and a granted host permission exempts the extension from the browser's CORS check, so there is nothing for the handshake to unblock. Removed rather than kept unused. M9 onboards on the host permission alone | M4 4.15, M9 | Low to restore — one action and one reply shape, both in git |
 | P10 | **Rich text editing arrives in M10**, superseding M6's plain textarea. Capture stays plain text | M10 | Medium — changes the input element under M6's tests |
+| P11 | **Field content is HTML, and `src/core/field-html.ts` is the only thing that decides what kind.** Every formatting action is a pure function over parsed runs; no browser editing command is used | M10 10.2, 10.5 | Low — it is one module, and the alternative is trusting `execCommand` |
+| P12 | **The captured text also lives outside the fields**, as `CardDraft.scratch` — the landing area. Fields are filled *from* it; a note-type change cannot move it | M10a | Low — additive to P4; nothing reads it but the editor and, later, M12 |
 
 ## Constraints
 
@@ -72,6 +74,17 @@ MVP ships.
 **Never in this project.** LaTeX and MathJax. Not deferred — not planned. No
 buttons, no parsing, no rendering.
 
+**M10 landed before M9.** Its plan named M9 as a dependency and nothing in it
+turned out to be one: M9 is onboarding and diagnostics over M4's taxonomy, and
+M10 touches neither. M9 is open and unchanged, and M11 depends on M10 as
+before.
+
+**M10a is M10's own follow-up**, from the first real use rather than from a
+plan: changing note type read as throwing the selection away. It is recorded
+in the archived M10 plan rather than given a milestone of its own, because it
+is the same pull request and the same subject — the editor being usable. It
+pins P12 and it is where M12's generation will read its input from.
+
 ## Milestones
 
 Ordering rule: **the contract precedes its consumers**, and anything that
@@ -89,7 +102,7 @@ AnkiConnect interface precedes the editor that renders its data.
 | M7 | End-to-end MVP, with the draft persisted from the moment it exists | M4, M5, M6 | done: `docs/archive/07-end-to-end-mvp.md` |
 | M8 | Settings, storage, and schema migration | M7 | done: `docs/archive/08-settings-and-persistence.md` |
 | M9 | Onboarding, connection diagnostics, repeat-capture polish | M8 | `09-onboarding-and-diagnostics.md` |
-| M10 | Card editor parity: every note type, its own fields in order, formatting, sticky fields, tags | M9 | `10-card-editor-parity.md` |
+| M10 | Card editor parity: every note type, its own fields in order, formatting, sticky fields, tags | — (see below) | done: `docs/archive/10-card-editor-parity.md` |
 | M11 | Media: region screenshots, page images, paste and drop | M10 | `11-media-and-screenshots.md` |
 | M12 | AI-assisted generation — **blocked** on its own design doc | M11 | `12-ai-generation.md` |
 

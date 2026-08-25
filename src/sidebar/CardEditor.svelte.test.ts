@@ -7,11 +7,13 @@ import type { CardDraft } from "@/core/draft";
 import type { NoteType } from "@/core/note-type";
 import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
 import { createFakeDraftStore } from "@/core/ports/fakes/fake-draft-store";
+import { createFakeRememberedStore } from "@/core/ports/fakes/fake-remembered-store";
 import type { AnkiClient, AnkiError } from "@/core/ports/types";
 import type { Result } from "@/core/result";
 import { BASIC, CLOZE, VOCAB } from "@/fixtures/note-types";
 
 import CardEditor from "./CardEditor.svelte";
+import { rangeOffsetsOf } from "./selection.dom";
 
 function draftOf(
   noteType: NoteType,
@@ -23,6 +25,7 @@ function draftOf(
     noteType,
     fields,
     tags: ["europe"],
+    scratch: "Paris is the capital of France.",
     source: {
       text: "Paris is the capital of France.",
       context: "France is a country in Europe.",
@@ -58,6 +61,7 @@ function pendingClient(): AnkiClient {
     probe: () => pending(),
     deckNames: () => pending<Result<readonly string[], AnkiError>>(),
     noteTypes: () => pending<Result<readonly NoteType[], AnkiError>>(),
+    tags: () => pending<Result<readonly string[], AnkiError>>(),
     canAddNote: () => pending<Result<boolean, AnkiError>>(),
     addNote: () => pending<Result<number, AnkiError>>(),
   };
@@ -70,15 +74,17 @@ function renderEditor(
 ) {
   const onCancel = vi.fn();
   const drafts = createFakeDraftStore(draft);
+  const remembered = createFakeRememberedStore();
   const rendered = render(CardEditor, {
     anki: client,
     draft,
     drafts,
+    remembered,
     onCancel,
     ...overrides,
   });
 
-  return { ...rendered, onCancel, drafts };
+  return { ...rendered, onCancel, drafts, remembered };
 }
 
 /** Everything the editor sent to Anki, for the fake only. */
@@ -90,18 +96,64 @@ async function addCard() {
   await fireEvent.click(screen.getByRole("button", { name: /add card/i }));
 }
 
-/** Put a range in the textarea the way a user's selection would. */
-function select(field: HTMLTextAreaElement, text: string) {
-  const at = field.value.indexOf(text);
-  field.setSelectionRange(at, at + text.length);
+/**
+ * A field is a `contenteditable` from M10 (10.2), so it is reached by role
+ * and read by what it holds rather than by a form control's value.
+ */
+function fieldOf(name: string): HTMLElement {
+  return screen.getByRole("textbox", { name });
+}
+
+/** What the user typed, as the browser would leave it in the element. */
+async function type(name: string, html: string) {
+  const node = fieldOf(name);
+  node.innerHTML = html;
+  await fireEvent.input(node);
+}
+
+function textNodeHolding(node: Node, text: string): [Text, number] {
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  let current = walker.nextNode();
+  while (current !== null) {
+    const at = (current as Text).data.indexOf(text);
+    if (at !== -1) return [current as Text, at];
+    current = walker.nextNode();
+  }
+
+  throw new Error(`no text node in the field holds ${text}`);
+}
+
+/** Select a run of the field's text the way a user's drag would. */
+async function select(name: string, text: string) {
+  const node = fieldOf(name);
+  const [holder, at] = textNodeHolding(node, text);
+
+  const range = document.createRange();
+  range.setStart(holder, at);
+  range.setEnd(holder, at + text.length);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+
+  // The editor caches what a field reports rather than asking for it after a
+  // button has taken the focus, so the selection has to be announced.
+  await fireEvent.keyUp(node);
+}
+
+/** Where the caret sits now, as a text offset in the named field. */
+function caretIn(name: string): number | undefined {
+  const selection = window.getSelection();
+  if (selection === null || selection.rangeCount === 0) return undefined;
+
+  return rangeOffsetsOf(fieldOf(name), selection.getRangeAt(0))?.start;
 }
 
 describe("1. what the editor shows", () => {
   it("renders the draft's fields, deck, note type, and tags", async () => {
     renderEditor();
 
-    expect(screen.getByLabelText("Front")).toHaveValue("Capital of France?");
-    expect(screen.getByLabelText("Back")).toHaveValue("");
+    expect(fieldOf("Front")).toHaveTextContent("Capital of France?");
+    expect(fieldOf("Back")).toHaveTextContent("");
     expect(screen.getByLabelText(/^deck$/i)).toHaveValue("Geography");
     expect(screen.getByLabelText(/^note type$/i)).toHaveValue("Basic");
     expect(await screen.findByText("europe")).toBeInTheDocument();
@@ -136,9 +188,7 @@ describe("2. editing a field", () => {
     const client = anki();
     renderEditor(BASIC_DRAFT, client);
 
-    await fireEvent.input(screen.getByLabelText("Back"), {
-      target: { value: "Paris" },
-    });
+    await type("Back", "Paris");
     await addCard();
 
     expect(added(client)[0]?.fields["Back"]).toBe("Paris");
@@ -150,16 +200,16 @@ describe("3 and 4. changing the note type", () => {
     renderEditor();
     await screen.findByRole("option", { name: "Vocab" });
 
-    await fireEvent.input(screen.getByLabelText("Back"), {
-      target: { value: "Paris" },
-    });
+    await type("Back", "Paris");
     await fireEvent.change(screen.getByLabelText(/^note type$/i), {
       target: { value: "Vocab" },
     });
 
-    expect(screen.getByLabelText("Front")).toHaveValue("Capital of France?");
-    expect(screen.getByLabelText("Example")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Back")).not.toBeInTheDocument();
+    expect(fieldOf("Front")).toHaveTextContent("Capital of France?");
+    expect(fieldOf("Example")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: "Back" }),
+    ).not.toBeInTheDocument();
   });
 
   // 3.2: content the switch could not carry is stashed, never dropped.
@@ -167,9 +217,7 @@ describe("3 and 4. changing the note type", () => {
     renderEditor();
     await screen.findByRole("option", { name: "Vocab" });
 
-    await fireEvent.input(screen.getByLabelText("Back"), {
-      target: { value: "Paris" },
-    });
+    await type("Back", "Paris");
     await fireEvent.change(screen.getByLabelText(/^note type$/i), {
       target: { value: "Vocab" },
     });
@@ -177,7 +225,7 @@ describe("3 and 4. changing the note type", () => {
       target: { value: "Basic" },
     });
 
-    expect(screen.getByLabelText("Back")).toHaveValue("Paris");
+    expect(fieldOf("Back")).toHaveTextContent("Paris");
   });
 });
 
@@ -231,9 +279,7 @@ describe("5 and 6. adding the card", () => {
   it("does not discard on a stray Escape", async () => {
     const { onCancel } = renderEditor();
 
-    await fireEvent.keyDown(screen.getByLabelText("Front"), {
-      key: "Escape",
-    });
+    await fireEvent.keyDown(fieldOf("Front"), { key: "Escape" });
 
     expect(onCancel).not.toHaveBeenCalled();
   });
@@ -253,10 +299,9 @@ describe("7. a port that refuses", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/pick a deck from the list/i)).toBeInTheDocument();
 
-    const front = screen.getByLabelText("Front");
-    expect(front).toHaveValue("Capital of France?");
-    await fireEvent.input(front, { target: { value: "Capital of Spain?" } });
-    expect(front).toHaveValue("Capital of Spain?");
+    expect(fieldOf("Front")).toHaveTextContent("Capital of France?");
+    await type("Front", "Capital of Spain?");
+    expect(fieldOf("Front")).toHaveTextContent("Capital of Spain?");
   });
 
   // "Every M4 error cause has a rendered state" — no default "went wrong".
@@ -310,7 +355,8 @@ describe("8. the deck and note-type lists", () => {
 
 describe("9. duplicates", () => {
   // 4.4: a warning, never a block. The user may want the near-duplicate.
-  it("warns without stopping the add", async () => {
+  // 10.8: shown the way Anki shows it — on the first field, not as a banner.
+  it("marks the first field without stopping the add", async () => {
     const client = anki({ duplicates: ["Capital of France?"] });
     renderEditor(BASIC_DRAFT, client);
 
@@ -319,6 +365,8 @@ describe("9. duplicates", () => {
         /already has a note whose first field is this one/i,
       ),
     ).toBeInTheDocument();
+    expect(fieldOf("Front")).toHaveAttribute("data-duplicate", "true");
+    expect(fieldOf("Back")).not.toHaveAttribute("data-duplicate", "true");
 
     await addCard();
     expect(added(client)).toHaveLength(1);
@@ -343,8 +391,8 @@ describe("10. reachable and labelled", () => {
 });
 
 describe("11 to 15. cloze deletions", () => {
-  function clozeField() {
-    return screen.getByLabelText("Text") as HTMLTextAreaElement;
+  function clozeText() {
+    return fieldOf("Text").innerHTML;
   }
 
   async function mark() {
@@ -356,42 +404,50 @@ describe("11 to 15. cloze deletions", () => {
   it("wraps the selection, and gives the next range the next ordinal", async () => {
     renderEditor(CLOZE_DRAFT);
 
-    select(clozeField(), "Paris");
+    await select("Text", "Paris");
     await mark();
-    expect(clozeField()).toHaveValue("{{c1::Paris}} is the capital of France.");
+    expect(clozeText()).toBe("{{c1::Paris}} is the capital of France.");
 
-    select(clozeField(), "France");
+    await select("Text", "France");
     await mark();
-    expect(clozeField()).toHaveValue(
-      "{{c1::Paris}} is the capital of {{c2::France}}.",
-    );
+    expect(clozeText()).toBe("{{c1::Paris}} is the capital of {{c2::France}}.");
+  });
+
+  // 10.2: the formatting stays inside the deletion, as Anki writes it.
+  it("keeps a bolded selection bold when it is marked", async () => {
+    renderEditor(CLOZE_DRAFT);
+
+    await select("Text", "Paris");
+    await fireEvent.click(screen.getByRole("button", { name: /^bold/i }));
+    await select("Text", "Paris");
+    await mark();
+
+    expect(clozeText()).toBe("{{c1::<b>Paris</b>}} is the capital of France.");
   });
 
   it("leaves the caret just past the markup it wrote", async () => {
     renderEditor(CLOZE_DRAFT);
 
-    select(clozeField(), "Paris");
+    await select("Text", "Paris");
     await mark();
 
-    expect(clozeField().selectionStart).toBe("{{c1::Paris}}".length);
+    expect(caretIn("Text")).toBe("{{c1::Paris}}".length);
   });
 
   // 3.9: one deletion, two blanks.
   it("groups a second span under an ordinal the user picked", async () => {
     renderEditor(CLOZE_DRAFT);
 
-    select(clozeField(), "Paris");
+    await select("Text", "Paris");
     await mark();
 
-    select(clozeField(), "France");
+    await select("Text", "France");
     await fireEvent.change(screen.getByLabelText(/mark the selection as/i), {
       target: { value: "1" },
     });
     await mark();
 
-    expect(clozeField()).toHaveValue(
-      "{{c1::Paris}} is the capital of {{c1::France}}.",
-    );
+    expect(clozeText()).toBe("{{c1::Paris}} is the capital of {{c1::France}}.");
     expect(
       within(screen.getByRole("list", { name: /deletions/i })).getAllByRole(
         "listitem",
@@ -402,11 +458,11 @@ describe("11 to 15. cloze deletions", () => {
   it("unwraps a deletion and drops it from the list", async () => {
     renderEditor(CLOZE_DRAFT);
 
-    select(clozeField(), "Paris");
+    await select("Text", "Paris");
     await mark();
     await fireEvent.click(screen.getByRole("button", { name: /remove c1/i }));
 
-    expect(clozeField()).toHaveValue("Paris is the capital of France.");
+    expect(clozeText()).toBe("Paris is the capital of France.");
     expect(
       screen.queryByRole("list", { name: /deletions/i }),
     ).not.toBeInTheDocument();
@@ -422,7 +478,7 @@ describe("11 to 15. cloze deletions", () => {
     await addCard();
     expect(added(client)).toEqual([]);
 
-    select(clozeField(), "Paris");
+    await select("Text", "Paris");
     await mark();
 
     expect(
@@ -436,21 +492,20 @@ describe("11 to 15. cloze deletions", () => {
   it("refuses an overlapping selection and leaves the field alone", async () => {
     renderEditor(CLOZE_DRAFT);
 
-    select(clozeField(), "Paris");
+    await select("Text", "Paris");
     await mark();
-    const before = clozeField().value;
+    const before = clozeText();
 
-    clozeField().setSelectionRange(2, 8);
+    await select("Text", "c1::Pa");
     await mark();
 
-    expect(clozeField()).toHaveValue(before);
+    expect(clozeText()).toBe(before);
     expect(screen.getByText(/overlaps c1/i)).toBeInTheDocument();
   });
 
   it("asks for a selection when there is none", async () => {
     renderEditor(CLOZE_DRAFT);
 
-    clozeField().setSelectionRange(3, 3);
     await mark();
 
     expect(
@@ -491,22 +546,62 @@ describe("16. cloze controls belong to cloze note types", () => {
   });
 });
 
-describe("17. marking without a mouse", () => {
+describe("17. the keyboard, matched to Anki's (10.7)", () => {
   it("marks the selection from the keyboard shortcut", async () => {
     renderEditor(CLOZE_DRAFT);
-    const field = screen.getByLabelText("Text") as HTMLTextAreaElement;
 
-    select(field, "Paris");
-    await fireEvent.keyDown(field, {
+    await select("Text", "Paris");
+    await fireEvent.keyDown(fieldOf("Text"), {
       key: "C",
       ctrlKey: true,
       shiftKey: true,
     });
 
-    expect(field).toHaveValue("{{c1::Paris}} is the capital of France.");
+    expect(fieldOf("Text").innerHTML).toBe(
+      "{{c1::Paris}} is the capital of France.",
+    );
   });
 
-  it("says what the shortcut is", () => {
+  it.each([
+    ["b", "<b>Capital</b> of France?"],
+    ["i", "<i>Capital</i> of France?"],
+    ["u", "<u>Capital</u> of France?"],
+  ] as const)("formats the selection with Ctrl+%s", async (key, expected) => {
+    renderEditor();
+
+    await select("Front", "Capital");
+    await fireEvent.keyDown(fieldOf("Front"), { key, ctrlKey: true });
+
+    expect(fieldOf("Front").innerHTML).toBe(expected);
+  });
+
+  it("shows the source of the field with the caret in it", async () => {
+    renderEditor();
+
+    await select("Front", "Capital");
+    await fireEvent.keyDown(fieldOf("Front"), {
+      key: "x",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(screen.getByLabelText(/front \(html\)/i)).toHaveValue(
+      "Capital of France?",
+    );
+  });
+
+  // Anki clears formatting with Ctrl+R, which the browser spends on reload.
+  // The button is the way to reach it; the chord is left alone.
+  it("does not claim Ctrl+R", async () => {
+    renderEditor();
+
+    await select("Front", "Capital");
+    await fireEvent.keyDown(fieldOf("Front"), { key: "r", ctrlKey: true });
+
+    expect(fieldOf("Front").innerHTML).toBe("Capital of France?");
+  });
+
+  it("says what the cloze shortcut is", () => {
     renderEditor(CLOZE_DRAFT);
 
     expect(screen.getByText(/ctrl.*shift.*c/i)).toBeInTheDocument();
@@ -521,9 +616,7 @@ describe("18. the draft survives the sidebar", () => {
   it("stores what was typed", async () => {
     const { drafts } = renderEditor();
 
-    await fireEvent.input(screen.getByLabelText("Back"), {
-      target: { value: "Paris" },
-    });
+    await type("Back", "Paris");
     await addCard();
 
     const stored = await drafts.load();
@@ -536,9 +629,7 @@ describe("18. the draft survives the sidebar", () => {
     drafts.failWith({ kind: "write-failed", message: "quota exceeded" });
     renderEditor(BASIC_DRAFT, anki(), { drafts });
 
-    await fireEvent.input(screen.getByLabelText("Back"), {
-      target: { value: "Paris" },
-    });
+    await type("Back", "Paris");
     await addCard();
 
     expect(await screen.findByText(/could not be saved/i)).toBeInTheDocument();
@@ -550,9 +641,7 @@ describe("19. retrying a failed add", () => {
     const client = anki();
     renderEditor(BASIC_DRAFT, client);
     await screen.findByRole("option", { name: "Default" });
-    await fireEvent.input(screen.getByLabelText("Back"), {
-      target: { value: "Paris" },
-    });
+    await type("Back", "Paris");
     client.failWith({ kind: "anki-not-running", message: "nothing answered" });
     await addCard();
     await screen.findByText(/anki is not running/i);
@@ -569,15 +658,13 @@ describe("19. retrying a failed add", () => {
     const client = anki();
     renderEditor(BASIC_DRAFT, client);
     await screen.findByRole("option", { name: "Default" });
-    await fireEvent.input(screen.getByLabelText("Back"), {
-      target: { value: "Paris" },
-    });
+    await type("Back", "Paris");
     client.failWith({ kind: "timeout", message: "Anki never answered" });
 
     await addCard();
 
     expect(await screen.findByText(/never answered/i)).toBeInTheDocument();
-    expect(screen.getByLabelText("Back")).toHaveValue("Paris");
+    expect(fieldOf("Back")).toHaveTextContent("Paris");
   });
 });
 
@@ -590,9 +677,9 @@ describe("20. converting a captured card to cloze", () => {
       screen.getByRole("button", { name: /convert to cloze/i }),
     );
 
-    expect(await screen.findByLabelText("Text")).toHaveValue(
-      "Capital of France?",
-    );
+    expect(
+      await screen.findByRole("textbox", { name: "Text" }),
+    ).toHaveTextContent("Capital of France?");
     expect(
       screen.getByRole("button", { name: /mark selection/i }),
     ).toBeInTheDocument();
@@ -629,5 +716,160 @@ describe("21. what the panel is told", () => {
     await screen.findByText(/added to anki/i);
 
     expect(onAdded).toHaveBeenCalledWith(1);
+  });
+});
+
+/**
+ * The landing area, and the complaint it exists for: switching from Basic to
+ * Cloze remaps nothing, because the two share no field name, so 3.2 stashes
+ * every field and the form renders empty. The text was never lost; it just
+ * had nowhere to be seen.
+ */
+describe("22. the landing area (10a.1)", () => {
+  function landing() {
+    return screen.getByLabelText(/selected text/i) as HTMLTextAreaElement;
+  }
+
+  async function chooseNoteType(name: string) {
+    await screen.findByRole("option", { name });
+    await fireEvent.change(screen.getByLabelText(/^note type$/i), {
+      target: { value: name },
+    });
+  }
+
+  it("shows the captured text", () => {
+    renderEditor();
+
+    expect(landing()).toHaveValue("Paris is the capital of France.");
+  });
+
+  it("keeps it when the note type change empties every field", async () => {
+    renderEditor();
+
+    await chooseNoteType("Cloze");
+
+    expect(fieldOf("Text").textContent).toBe("");
+    expect(landing()).toHaveValue("Paris is the capital of France.");
+  });
+
+  it("says the old note type's content is kept, rather than nothing", async () => {
+    renderEditor();
+
+    await chooseNoteType("Cloze");
+
+    expect(
+      screen.getByText(/what basic had in its fields is kept/i),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the fields of the note type in hand as destinations", async () => {
+    renderEditor();
+
+    await chooseNoteType("Cloze");
+
+    expect(
+      [...screen.getByLabelText(/send to/i).querySelectorAll("option")].map(
+        (one) => one.value,
+      ),
+    ).toEqual(["Text", "Back Extra"]);
+  });
+});
+
+describe("23. sending a selection into a field (10a.2)", () => {
+  function landing() {
+    return screen.getByLabelText(/selected text/i) as HTMLTextAreaElement;
+  }
+
+  function selectInLanding(text: string) {
+    const at = landing().value.indexOf(text);
+    landing().setSelectionRange(at, at + text.length);
+  }
+
+  async function sendTo(
+    field: string,
+    how: "Add to field" | "Replace field" = "Replace field",
+  ) {
+    await fireEvent.change(screen.getByLabelText(/send to/i), {
+      target: { value: field },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: how }));
+  }
+
+  /** Leave the caret at a text offset in a field, then look away from it. */
+  async function caretIn(field: string, offset: number) {
+    const node = fieldOf(field);
+    const range = document.createRange();
+    range.setStart(node.firstChild as Text, offset);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    await fireEvent.keyUp(node);
+  }
+
+  it("replaces the field with the selected run", async () => {
+    renderEditor();
+
+    selectInLanding("Paris");
+    await sendTo("Back", "Replace field");
+
+    expect(fieldOf("Back").innerHTML).toBe("Paris");
+  });
+
+  it("adds it where the caret was left in that field", async () => {
+    renderEditor();
+    await type("Back", "the city of ");
+    await caretIn("Back", 12);
+
+    selectInLanding("Paris");
+    await sendTo("Back", "Add to field");
+
+    expect(fieldOf("Back").innerHTML).toBe("the city of Paris");
+  });
+
+  // The caret is cached per field, so touching another one after does not
+  // move where this lands.
+  it("uses that field's caret, not the last one touched anywhere", async () => {
+    renderEditor();
+    await type("Back", "the city of ");
+    await caretIn("Back", 12);
+    await select("Front", "Capital");
+
+    selectInLanding("Paris");
+    await sendTo("Back", "Add to field");
+
+    expect(fieldOf("Back").innerHTML).toBe("the city of Paris");
+  });
+
+  it("puts it on the end of a field whose caret was never left anywhere", async () => {
+    renderEditor();
+    await type("Back", "the city of ");
+
+    selectInLanding("Paris");
+    await sendTo("Back", "Add to field");
+
+    expect(fieldOf("Back").innerHTML).toBe("the city of Paris");
+  });
+
+  // Adding to an empty field and replacing it are the same act.
+  it("will not add to a field that is empty", async () => {
+    renderEditor();
+
+    await fireEvent.change(screen.getByLabelText(/send to/i), {
+      target: { value: "Back" },
+    });
+
+    expect(screen.getByRole("button", { name: "Add to field" })).toBeDisabled();
+
+    await type("Back", "something");
+    expect(screen.getByRole("button", { name: "Add to field" })).toBeEnabled();
+  });
+
+  it("sends the whole box when nothing in it is selected", async () => {
+    renderEditor();
+
+    await sendTo("Back", "Replace field");
+
+    expect(fieldOf("Back").innerHTML).toBe("Paris is the capital of France.");
   });
 });

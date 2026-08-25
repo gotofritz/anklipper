@@ -6,13 +6,27 @@
     tags,
     onAdd,
     onRemove,
+    known = [],
   }: {
     tags: readonly string[];
     onAdd: (tag: string) => void;
     onRemove: (tag: string) => void;
+    /** Every tag the collection already holds, for completion (10.9). */
+    known?: readonly string[];
   } = $props();
 
   let entry = $state("");
+
+  /**
+   * A `<datalist>` and not a list of our own: it completes, it filters as the
+   * user types, it is reachable from the keyboard, and — the part that matters
+   * — it does not refuse a value that is not in it. A tag Anki has never seen
+   * is exactly what the first card on a new subject needs.
+   *
+   * Tags already on this card are left out; offering one that is a no-op is
+   * offering nothing.
+   */
+  const suggestions = $derived(known.filter((tag) => !tags.includes(tag)));
 
   function add() {
     const tag = entry.trim();
@@ -54,9 +68,15 @@
       id="new-tag"
       type="text"
       autocomplete="off"
+      list="known-tags"
       bind:value={entry}
       {onkeydown}
     />
+    <datalist id="known-tags">
+      {#each suggestions as tag (tag)}
+        <option value={tag}>{tag}</option>
+      {/each}
+    </datalist>
     <button type="button" onclick={add}>Add tag</button>
   </div>
 </fieldset>

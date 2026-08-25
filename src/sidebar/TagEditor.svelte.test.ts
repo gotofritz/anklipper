@@ -3,10 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import TagEditor from "./TagEditor.svelte";
 
-function renderEditor(tags: readonly string[] = ["europe", "capitals"]) {
+function renderEditor(
+  tags: readonly string[] = ["europe", "capitals"],
+  known: readonly string[] = [],
+) {
   const onAdd = vi.fn();
   const onRemove = vi.fn();
-  render(TagEditor, { tags, onAdd, onRemove });
+  render(TagEditor, { tags, known, onAdd, onRemove });
 
   return { onAdd, onRemove };
 }
@@ -64,5 +67,46 @@ describe("the tag editor", () => {
     );
 
     expect(onRemove).toHaveBeenCalledWith("europe");
+  });
+
+  // 10.9. The collection's own tags, offered rather than imposed: a
+  // completion list that refused a new tag would make the first card of a new
+  // subject impossible to tag.
+  describe("completion from the collection (10.9)", () => {
+    it("offers the tags Anki already holds", () => {
+      renderEditor([], ["europe", "geo::capitals"]);
+
+      expect(screen.getByLabelText(/add a tag/i)).toHaveAttribute("list");
+      expect(
+        screen.getByRole("option", { name: "geo::capitals", hidden: true }),
+      ).toBeInTheDocument();
+    });
+
+    it("leaves out the tags the card already carries", () => {
+      renderEditor(["europe"], ["europe", "rivers"]);
+
+      expect(
+        screen.queryByRole("option", { name: "europe", hidden: true }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "rivers", hidden: true }),
+      ).toBeInTheDocument();
+    });
+
+    it("still takes a tag the collection has never seen", async () => {
+      const { onAdd } = renderEditor([], ["europe"]);
+      const box = screen.getByLabelText(/add a tag/i);
+
+      await fireEvent.input(box, { target: { value: "brand-new" } });
+      await fireEvent.keyDown(box, { key: "Enter" });
+
+      expect(onAdd).toHaveBeenCalledWith("brand-new");
+    });
+
+    it("offers nothing when the collection reported nothing", () => {
+      renderEditor([], []);
+
+      expect(screen.queryAllByRole("option", { hidden: true })).toHaveLength(0);
+    });
   });
 });

@@ -47,6 +47,19 @@ function isDraft(value: unknown): value is CardDraft {
 }
 
 /**
+ * A draft written before the landing area existed (10a.1) has no `scratch`.
+ * It is filled from the capture, which is what seeded it in the first place —
+ * degrading a missing value rather than refusing the read, the way the
+ * settings store does (8.2). A card half-written when the extension updated
+ * is exactly the one nobody can afford to lose.
+ */
+function withLandingArea(draft: CardDraft): CardDraft {
+  if (typeof draft.scratch === "string") return draft;
+
+  return { ...draft, scratch: draft.source?.text ?? "" };
+}
+
+/**
  * Watch for a draft written by another context. The sidebar reads the draft
  * on mount, and on Firefox it is usually already open when the next capture
  * happens — so without this it would show the previous card indefinitely.
@@ -96,7 +109,7 @@ export function createStoredDrafts(
           message: "what is stored under the draft key is not a card draft",
         });
       }
-      return ok(stored);
+      return ok(withLandingArea(stored));
     },
 
     async save(draft: CardDraft): Promise<Result<void, DraftStoreError>> {

@@ -71,6 +71,34 @@ describe("createStoredRemembered", () => {
     expect(isOk(result) && result.value).toEqual({});
   });
 
+  // 10.6's pins are remembered state too: they belong to what the extension
+  // noticed, not to what the user configured.
+  it("round-trips the sticky fields", async () => {
+    const storage = fakeStorage();
+    const store = createStoredRemembered(storage);
+
+    await store.save({ sticky: { Basic: { Back: "Source: Wikipedia" } } });
+
+    const result = await store.load();
+    expect(isOk(result) && result.value.sticky).toEqual({
+      Basic: { Back: "Source: Wikipedia" },
+    });
+  });
+
+  it("drops sticky entries that are not field text", async () => {
+    const storage = fakeStorage({
+      [REMEMBERED_KEY]: {
+        sticky: { Basic: { Back: 7, Front: "kept" }, Broken: "nope" },
+      },
+    });
+
+    const result = await createStoredRemembered(storage).load();
+
+    expect(isOk(result) && result.value.sticky).toEqual({
+      Basic: { Front: "kept" },
+    });
+  });
+
   it("reports storage itself refusing", async () => {
     const storage = fakeStorage();
     storage.breakReads();
