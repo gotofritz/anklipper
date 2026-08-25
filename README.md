@@ -38,9 +38,11 @@ switching from one to another cannot always carry what you had typed. The box
 at the top is never a field, so nothing can move it.
 
 To fill a field from it: select the part you want, pick the field from the
-**Send to** menu, and press **Send**. With nothing selected, the whole box is
-sent. By default it drops in where you last had the cursor in that field; tick
-**Replace the field** if you want it to overwrite instead.
+**Send to** menu, and press **Add to field** or **Replace field**. Adding puts
+it where you last had the cursor in that field; replacing overwrites whatever
+was there. With nothing selected, the whole box is sent. **Add to field** is
+greyed out while the field is empty, because adding to an empty field and
+replacing it come to the same thing.
 
 If you change card type and a field's contents cannot come with it, Anklipper
 says so and keeps them — switch back and they are there again.

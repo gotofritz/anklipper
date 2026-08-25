@@ -4,7 +4,7 @@
 
   import type { CardDraft, DraftIssue } from "@/core/draft";
   import type { InlineMark } from "@/core/field-html";
-  import { INLINE_MARKS } from "@/core/field-html";
+  import { INLINE_MARKS, isFieldEmpty } from "@/core/field-html";
   import type {
     AnkiClient,
     DraftStore,
@@ -94,7 +94,7 @@
   );
   /**
    * The last caret each field was left at, kept per field rather than only for
-   * the most recent one: sending from the landing area into `Back` should land
+   * the most recent one: adding to `Back` from the landing area should land
    * where `Back`'s caret was, whatever field was touched after it.
    */
   const carets = new SvelteMap<string, TextRange>();
@@ -161,6 +161,16 @@
       : draftStoreErrorCopy(model.saveError),
   );
 
+  /**
+   * Which fields have nothing in them, for the landing area: adding to an
+   * empty field and replacing it are the same act, so it offers one of them.
+   */
+  const emptyFields = $derived(
+    model.draft.noteType.fields.filter((name) =>
+      isFieldEmpty(model.draft.fields[name] ?? ""),
+    ),
+  );
+
   /** Which marks the current selection carries, for the toolbar's buttons. */
   const marks = $derived.by(() => {
     const state = {} as Record<InlineMark, boolean>;
@@ -190,10 +200,12 @@
   }
 
   /**
-   * 10a.2. Where it lands is the caret the user last left in that field —
-   * which is why the caret is cached per field: by the time the button is
-   * pressed the focus is in the landing area and the field's own selection is
-   * gone. A field never focused takes it on the end, which loses nothing.
+   * 10a.2. **Replace field** takes the field over. **Add to field** puts the
+   * text where the user last left the caret in it — which is why the caret is
+   * cached per field: by the time the button is pressed the focus is in the
+   * landing area and the field's own selection is gone. A field never focused
+   * takes it on the end, and an empty one does not offer the button at all,
+   * since adding to an empty field is replacing it.
    */
   function sendToField(field: string, text: string, replace: boolean) {
     const caret = carets.get(field);
@@ -330,6 +342,7 @@
   <LandingArea
     text={model.draft.scratch}
     fields={model.draft.noteType.fields}
+    {emptyFields}
     onInput={(text) => model.setScratch(text)}
     onSend={sendToField}
   />

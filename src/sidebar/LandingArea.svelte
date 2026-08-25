@@ -17,24 +17,28 @@
   const {
     text,
     fields,
+    emptyFields = [],
     onInput,
     onSend,
   }: {
     text: string;
     /** The note type's field names, in its own order (10.1). */
     fields: readonly string[];
+    /**
+     * Which of them have nothing in them. Adding to an empty field and
+     * replacing it are the same act, so only one of the two is offered.
+     */
+    emptyFields?: readonly string[];
     onInput: (text: string) => void;
-    /** The selected run, the field it is going to, and whether to replace. */
+    /**
+     * The selected run, the field it is going to, and which of the two things
+     * to do with it. `replace` overwrites the field; otherwise it goes on the
+     * end.
+     */
     onSend: (field: string, text: string, replace: boolean) => void;
   } = $props();
 
   let box = $state<HTMLTextAreaElement | undefined>(undefined);
-  /**
-   * Off by default: the selection lands where the caret was left in the target
-   * field, which loses nothing. On, it overwrites the field outright — the
-   * cleaner result, and the one that needs to be asked for.
-   */
-  let replace = $state(false);
   /**
    * Which field the next send goes to. Held as the user's choice, but read
    * through `target`, which falls back to the note type's first field: a note
@@ -47,7 +51,17 @@
     chosen !== undefined && fields.includes(chosen) ? chosen : fields[0],
   );
 
-  function send() {
+  const targetEmpty = $derived(
+    target === undefined || emptyFields.includes(target),
+  );
+
+  /**
+   * Two buttons rather than one and a modifier: adding to a field and
+   * replacing it are different enough that reading a checkbox to know which
+   * is about to happen is a worse trade than a second button. Each says what
+   * it does, and neither has a state to be wrong about.
+   */
+  function send(replace: boolean) {
     const node = box;
     const field = target;
     if (node === undefined || field === undefined) return;
@@ -76,8 +90,9 @@
     bind:this={box}></textarea>
 
   <p class="quiet">
-    Select part of this, then send it to a field. Sending with nothing selected
-    sends all of it. This box does not change when you change note type.
+    Select part of this, then add it to a field at the cursor, or replace that
+    field with it. Sending with nothing selected sends all of it. This box does
+    not change when you change note type.
   </p>
 
   <div class="row">
@@ -90,16 +105,29 @@
         <option value={field}>{field}</option>
       {/each}
     </select>
-    <button type="button" onclick={send} disabled={target === undefined}>
-      Send
+    <!--
+      Disabled while the field is empty: adding to an empty field and
+      replacing it produce the same field, so offering both would be offering
+      a choice that is not one.
+    -->
+    <button
+      type="button"
+      title={targetEmpty
+        ? `${target ?? "The field"} is empty — replace it instead`
+        : `Put it where the cursor was left in ${target}`}
+      onclick={() => send(false)}
+      disabled={targetEmpty}
+    >
+      Add to field
     </button>
-  </div>
-
-  <div class="row">
-    <input id="landing-replace" type="checkbox" bind:checked={replace} />
-    <label for="landing-replace">
-      Replace the field instead of inserting at the cursor
-    </label>
+    <button
+      type="button"
+      title="Overwrite {target ?? 'the field'} with it"
+      onclick={() => send(true)}
+      disabled={target === undefined}
+    >
+      Replace field
+    </button>
   </div>
 </fieldset>
 
@@ -145,17 +173,8 @@
     margin-top: 0.4rem;
   }
 
-  .row input[type="checkbox"] {
-    flex: none;
-  }
-
   .row select {
     flex: 1 1 6rem;
-    min-width: 0;
-  }
-
-  .row label[for="landing-replace"] {
-    flex: 1 1 8rem;
     min-width: 0;
   }
 </style>

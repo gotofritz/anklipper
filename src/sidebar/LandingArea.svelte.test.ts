@@ -15,6 +15,7 @@ function renderLanding(overrides: Record<string, unknown> = {}) {
     ...render(LandingArea, {
       text: TEXT,
       fields: ["Front", "Back"],
+      emptyFields: [],
       onInput,
       onSend,
       ...overrides,
@@ -31,11 +32,14 @@ function select(text: string) {
   box().setSelectionRange(at, at + text.length);
 }
 
-async function sendTo(field: string) {
+async function sendTo(
+  field: string,
+  how: "Add to field" | "Replace field" = "Add to field",
+) {
   await fireEvent.change(screen.getByLabelText(/send to/i), {
     target: { value: field },
   });
-  await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+  await fireEvent.click(screen.getByRole("button", { name: how }));
 }
 
 describe("1. the box itself", () => {
@@ -70,7 +74,7 @@ describe("2. sending a run of it into a field (10a.2)", () => {
   it("starts on the note type's first field", async () => {
     const { onSend } = renderLanding();
 
-    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    await fireEvent.click(screen.getByRole("button", { name: "Add to field" }));
 
     expect(onSend).toHaveBeenCalledWith("Front", TEXT, false);
   });
@@ -114,7 +118,7 @@ describe("2. sending a run of it into a field (10a.2)", () => {
       target: { value: "Back" },
     });
     await rerender({ fields: ["Text", "Back Extra"] });
-    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    await fireEvent.click(screen.getByRole("button", { name: "Add to field" }));
 
     expect(onSend).toHaveBeenCalledWith("Text", TEXT, false);
   });
@@ -126,27 +130,62 @@ describe("2. sending a run of it into a field (10a.2)", () => {
       target: { value: "Back" },
     });
     await rerender({ fields: ["Front", "Back", "Extra"] });
-    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    await fireEvent.click(screen.getByRole("button", { name: "Add to field" }));
 
     expect(onSend).toHaveBeenCalledWith("Back", TEXT, false);
   });
 });
 
-describe("3. insert or replace", () => {
-  it("inserts by default", () => {
-    renderLanding();
-
-    expect(screen.getByLabelText(/replace/i)).not.toBeChecked();
-  });
-
-  it("says to replace once the box is ticked", async () => {
+describe("3. adding to a field, or replacing it", () => {
+  // Two buttons rather than one and a checkbox: each says what it does, and
+  // neither has a state to be wrong about.
+  it("adds when Add to field is pressed", async () => {
     const { onSend } = renderLanding();
 
-    await fireEvent.click(screen.getByLabelText(/replace/i));
     select("Paris");
-    await sendTo("Front");
+    await sendTo("Front", "Add to field");
+
+    expect(onSend).toHaveBeenCalledWith("Front", "Paris", false);
+  });
+
+  it("replaces when Replace field is pressed", async () => {
+    const { onSend } = renderLanding();
+
+    select("Paris");
+    await sendTo("Front", "Replace field");
 
     expect(onSend).toHaveBeenCalledWith("Front", "Paris", true);
+  });
+
+  it("offers no third state to get wrong", () => {
+    renderLanding();
+
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  // Adding to an empty field and replacing it produce the same field, so
+  // offering both would be offering a choice that is not one.
+  it("will not add to a field that is empty", () => {
+    renderLanding({ emptyFields: ["Front", "Back"] });
+
+    expect(screen.getByRole("button", { name: "Add to field" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Replace field" })).toBeEnabled();
+  });
+
+  it("allows adding once the field has something in it", () => {
+    renderLanding({ emptyFields: ["Back"] });
+
+    expect(screen.getByRole("button", { name: "Add to field" })).toBeEnabled();
+  });
+
+  it("follows the chosen field, not the first one", async () => {
+    renderLanding({ emptyFields: ["Back"] });
+
+    await fireEvent.change(screen.getByLabelText(/send to/i), {
+      target: { value: "Back" },
+    });
+
+    expect(screen.getByRole("button", { name: "Add to field" })).toBeDisabled();
   });
 });
 

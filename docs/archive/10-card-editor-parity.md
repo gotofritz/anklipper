@@ -77,7 +77,7 @@ Three decisions taken with the user rather than assumed:
 | # | Decision | Note |
 |---|----------|------|
 | 10a.1 | The landing area is **plain text**, editable, and persisted with the draft | It is what the extractor read (5.2, 10.3), and it is the surface M12 will generate from. Formatting belongs on the far side of a send. |
-| 10a.2 | Sending **inserts at the caret** the target field was last left at; a checkbox **replaces** instead | Insert loses nothing, so it is the default; replace is destructive, so it is asked for. The caret is cached per field, since pressing the button moves focus off it. |
+| 10a.2 | **Add to field** puts the text at the caret the target field was last left at; **Replace field** overwrites it | Two buttons rather than one and a modifier: each says what it does, and neither has a state to be wrong about. The caret is cached per field, since pressing the button moves focus off it. Adding is disabled while the field is empty, because it would then be replacing. |
 | 10a.4 | The destination is a **menu**, not a button per field | A note type with eight fields is eight buttons wide in a sidebar a third of a window across. A choice the next note type does not have falls back to its first field. |
 | 10a.3 | A capture arriving while a card is open **still waits and asks** (7.4) | Considered appending to the landing area instead; rejected, because there would then be no way to start a fresh card from a selection without discarding first. |
 

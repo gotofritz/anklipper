@@ -785,58 +785,90 @@ describe("23. sending a selection into a field (10a.2)", () => {
     landing().setSelectionRange(at, at + text.length);
   }
 
-  async function sendTo(field: string) {
+  async function sendTo(
+    field: string,
+    how: "Add to field" | "Replace field" = "Replace field",
+  ) {
     await fireEvent.change(screen.getByLabelText(/send to/i), {
       target: { value: field },
     });
-    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    await fireEvent.click(screen.getByRole("button", { name: how }));
   }
 
-  it("puts the selected run into the field", async () => {
-    renderEditor();
-
-    selectInLanding("Paris");
-    await sendTo("Back");
-
-    expect(fieldOf("Back").innerHTML).toBe("Paris");
-  });
-
-  it("lands where the caret was left in that field", async () => {
-    renderEditor();
-
-    await type("Back", "the city of ");
-    await select("Back", "the");
-    fieldOf("Back").blur();
-    const node = fieldOf("Back");
+  /** Leave the caret at a text offset in a field, then look away from it. */
+  async function caretIn(field: string, offset: number) {
+    const node = fieldOf(field);
     const range = document.createRange();
-    range.setStart(node.firstChild as Text, 12);
+    range.setStart(node.firstChild as Text, offset);
     range.collapse(true);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
     await fireEvent.keyUp(node);
+  }
+
+  it("replaces the field with the selected run", async () => {
+    renderEditor();
 
     selectInLanding("Paris");
-    await sendTo("Back");
+    await sendTo("Back", "Replace field");
+
+    expect(fieldOf("Back").innerHTML).toBe("Paris");
+  });
+
+  it("adds it where the caret was left in that field", async () => {
+    renderEditor();
+    await type("Back", "the city of ");
+    await caretIn("Back", 12);
+
+    selectInLanding("Paris");
+    await sendTo("Back", "Add to field");
 
     expect(fieldOf("Back").innerHTML).toBe("the city of Paris");
   });
 
-  it("replaces the field when the box is ticked", async () => {
+  // The caret is cached per field, so touching another one after does not
+  // move where this lands.
+  it("uses that field's caret, not the last one touched anywhere", async () => {
     renderEditor();
-    await type("Back", "wrong");
+    await type("Back", "the city of ");
+    await caretIn("Back", 12);
+    await select("Front", "Capital");
 
-    await fireEvent.click(screen.getByLabelText(/replace the field/i));
     selectInLanding("Paris");
-    await sendTo("Back");
+    await sendTo("Back", "Add to field");
 
-    expect(fieldOf("Back").innerHTML).toBe("Paris");
+    expect(fieldOf("Back").innerHTML).toBe("the city of Paris");
+  });
+
+  it("puts it on the end of a field whose caret was never left anywhere", async () => {
+    renderEditor();
+    await type("Back", "the city of ");
+
+    selectInLanding("Paris");
+    await sendTo("Back", "Add to field");
+
+    expect(fieldOf("Back").innerHTML).toBe("the city of Paris");
+  });
+
+  // Adding to an empty field and replacing it are the same act.
+  it("will not add to a field that is empty", async () => {
+    renderEditor();
+
+    await fireEvent.change(screen.getByLabelText(/send to/i), {
+      target: { value: "Back" },
+    });
+
+    expect(screen.getByRole("button", { name: "Add to field" })).toBeDisabled();
+
+    await type("Back", "something");
+    expect(screen.getByRole("button", { name: "Add to field" })).toBeEnabled();
   });
 
   it("sends the whole box when nothing in it is selected", async () => {
     renderEditor();
 
-    await sendTo("Back");
+    await sendTo("Back", "Replace field");
 
     expect(fieldOf("Back").innerHTML).toBe("Paris is the capital of France.");
   });

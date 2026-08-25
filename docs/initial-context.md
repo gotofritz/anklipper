@@ -802,14 +802,18 @@ field** the way Anki shows it rather than as a banner (10.8). It appears when
 appearing the moment the field changes: a warning about text the user has
 already replaced is worse than no warning.
 
-**The landing area sends into the caret, or replaces** (10a.2). A checkbox
-picks which, and it is off by default: inserting at the caret the user last
-left in that field loses nothing, and replacing is the destructive one and so
-is the one asked for. The caret is cached **per field**, because by the time
-the button is pressed the focus is in the landing area and the field's own
-selection is gone; a field never focused takes the text on its end. Nothing
-selected in the landing area sends all of it — wanting the lot is the common
-case, and refusing would be an error message for something a button can do.
+**The landing area adds at the caret, or replaces** (10a.2) — two buttons
+rather than one and a modifier, so each says what it does and neither has a
+state to be wrong about. **Add to field** puts the text where the user last
+left the caret in that field; **Replace field** overwrites it. The caret is
+cached **per field**, because by the time the button is pressed the focus is
+in the landing area and the field's own selection is gone; a field never
+focused takes the text on its end. **Add to field** is disabled while the
+target field is empty, since adding to an empty field and replacing it produce
+the same field — offering both would be offering a choice that is not one.
+Nothing selected in the landing area sends all of it: wanting the lot is the
+common case, and refusing would be an error message for something a button can
+do.
 The destination is a menu rather than a button per field: a note type with
 eight fields is eight buttons wide in a sidebar a third of a window across,
 and a menu is one control however many there are. A choice the next note type

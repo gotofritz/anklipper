@@ -710,7 +710,11 @@ describe("10. the landing area survives the note type", () => {
     await fireEvent.change(screen.getByLabelText(/send to/i), {
       target: { value: field },
     });
-    await fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    // The fields these tests send into are empty, so replacing is the only
+    // one of the two offered — adding to an empty field is replacing it.
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Replace field" }),
+    );
   }
 
   it("holds the capture from the moment the sidebar opens", async () => {
