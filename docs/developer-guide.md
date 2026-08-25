@@ -8,18 +8,25 @@ For what the extension does and how to use it, see the
 
 ## Where things stand
 
-M5 has landed. The toolchain and CI are green (M1), the extension has its
+M7 has landed, and the flow works end to end: select text, choose **Create
+Anki Card**, edit the card in the sidebar, add it, and it is in Anki.
+
+Underneath: the toolchain and CI are green (M1), the extension has its
 skeleton (M2) — three contexts talking over a typed message channel, every
 `browser.*` call behind a port in `src/platform/`, the MVP permission set and
 the pinned extension identity in the manifest — `src/core/` holds the card
 model (M3), `src/anki/` holds the AnkiConnect adapter and its error taxonomy
-(M4), and selecting text now produces a stored draft: the **Create Anki
-Card** context-menu entry and its `Alt+Shift+A` shortcut, on-demand injection
-of the content script, and extraction of the selection, its surrounding
-block, the nearest heading, and the page's title and URL.
+(M4), `src/background/capture.ts` turns a gesture into a stored draft (M5),
+and `src/sidebar/` is the editor built on all of it (M6).
 
-The sidebar shows what was captured; it cannot yet be edited or added. The
-editor is M6, and M7 joins the capture to the adapter.
+M7 added what makes it usable rather than demonstrable: the draft is written
+to storage from the moment it exists and on every edit, a failed add keeps
+the card and offers a retry, a successful one clears the slot and says so,
+and a second selection made while a card is open waits and asks rather than
+overwriting it.
+
+Still to come: settings in place of M7's hardcoded deck and note type (M8),
+and onboarding for the host permission (M9).
 
 `docs/initial-context.md` is the authoritative description of that
 architecture. Read it before changing a layer boundary, a message shape, or a
@@ -104,8 +111,9 @@ On disk:
 - `src/` is the alias root. `@/…` resolves to it identically in the build, in
   tests, and in `tsc`.
 - `tests/` — the harness setup files, the tests that assert the harness itself
-  works, and the test that holds the generated manifest to the permission
-  ceiling.
+  works, the test that holds the generated manifest to the permission ceiling,
+  and `tests/integration/`, which drives the whole flow — gesture, capture,
+  panel, add — with only AnkiConnect mocked.
 
 Tests sit beside the module they cover. ESLint enforces the bottom of the
 dependency stack: `src/core/`, `src/manifest/`, and `src/messaging/` may not
@@ -439,6 +447,43 @@ Two things need eyes rather than a test:
   Firefox allows and check that nothing overflows sideways.
 - **The whole flow from the keyboard.** Tab through every control, mark a
   cloze deletion with `Ctrl+Shift+C`, and add the card with `Ctrl+Enter`.
+
+### 8. The whole flow, against a real Anki
+
+M7's done-when criteria. The integration test drives all of this with
+AnkiConnect mocked (`tests/integration/mvp-flow.svelte.test.ts`); what a real
+Anki adds is whether the note it receives is one it can actually use.
+
+Anki running, AnkiConnect installed, and the host permission granted — steps 4
+and 5 above.
+
+1. **A real card.** Select a sentence, **Create Anki Card**, fill in `Back`,
+   press **Add card**. Expect *Added to Anki.* and the card in the collection.
+   The deck is `Default` and the note type `Basic` until M8 makes them
+   settings.
+2. **A real cloze card.** Capture again and press **Convert to cloze**, which
+   moves the selection into `Text`. Select a word, press `Ctrl+Shift+C`,
+   select another, press it again. Add the card, then open it in Anki's
+   browser: there must be **one card per ordinal**, `c1` and `c2`. That is the
+   only check that proves the markup is valid rather than merely well-formed —
+   Anki accepts a cloze note with no deletions at all rather than refusing it.
+3. **Anki closed loses nothing.** Capture something, edit it, quit Anki, and
+   press **Add card**. Expect *Anki is not running* and a **Try again**
+   button, with every field exactly as it was. Confirm the draft is on disk:
+
+   ```js
+   await browser.storage.local.get("draft")
+   ```
+
+   Start Anki, press **Try again**, and expect the card to land with the edits
+   intact.
+4. **Closing the sidebar loses nothing.** Type into a field, close the
+   sidebar, reopen it. The card comes back with what was typed.
+5. **A second selection asks.** With a card open and edited, select something
+   else and capture it. Expect *A newer selection is waiting* above the
+   editor. **Keep this card** drops the new one; **Use the new selection**
+   replaces the card being edited. Both are one click and neither happens on
+   its own.
 
 ## Plans and documentation
 

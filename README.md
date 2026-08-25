@@ -25,10 +25,27 @@ describes what it will do. There is nothing to download at the moment.
 Anklipper also keeps a note of where the text came from, so a card can carry
 the page title and address alongside whatever you wrote.
 
+If you want a fill-in-the-blank card instead, press **Convert to cloze**.
+Select each word or phrase you want hidden and press **Mark selection**, and
+Anki will ask you for them one at a time.
+
 Some pages hide their text in a way no add-on can read — PDFs opened in the
 browser's own viewer are the common one. When that happens, Anklipper tells
 you what it could not read rather than quietly making a card with a piece
 missing.
+
+## Your unfinished card is kept
+
+A card you are part way through is saved as you type it, so it is still there
+if you close the panel, switch tabs, or leave the browser for a while.
+
+If Anki is not running when you click add, nothing is lost: Anklipper says so
+and keeps the card exactly as you left it, with a **Try again** button. Start
+Anki, press it, and the card goes in.
+
+And if you select something new while a card is still open, Anklipper asks
+before replacing it. You can keep what you were working on, or switch to the
+new selection — nothing is thrown away without you saying so.
 
 ## Before you start
 
@@ -55,9 +72,11 @@ if you would rather see what you are installing.
 
 **3. Firefox.** Support for Chrome is planned, but Firefox comes first.
 
-The first time you use Anklipper, Anki will ask whether you want to allow it
-to connect. Say yes. That permission is what lets the two talk to each other,
-and you only give it once.
+Firefox will also ask you to allow Anklipper to reach Anki on your own
+computer — it is the only address Anklipper ever contacts. Say yes; that
+permission is what lets the two talk to each other, and you only give it
+once. Until you do, Anklipper says so and everything except adding a card
+still works.
 
 ## Your information stays on your computer
 
