@@ -7,8 +7,8 @@ import { warn } from "@/core/capture";
 import type { CardDraft } from "@/core/draft";
 import type { GenerationDefaults } from "@/core/generate";
 import { generateFromCapture } from "@/core/generate";
-import { createNoteType } from "@/core/note-type";
 import type { DraftStore } from "@/core/ports/types";
+import { DEFAULT_SETTINGS } from "@/core/settings";
 import { err, ok, type Result } from "@/core/result";
 import type { Messenger } from "@/messaging/messenger";
 import type { ScriptingPort } from "@/platform/scripting";
@@ -32,8 +32,9 @@ export interface CaptureTrigger {
 }
 
 /**
- * Until M8 stores what the user chose, a capture lands on Anki's own Basic in
- * Anki's own default deck. Both are hardcoded here and become settings next.
+ * What a capture starts from when nothing has resolved settings for it — the
+ * shipped defaults, which are Anki's own `Default` deck and its own `Basic`
+ * (M8; M7 had the same two values as constants here).
  *
  * `Default` rather than an empty deck: every Anki collection ships with one,
  * so a capture is addable without an edit — and if the user has renamed it,
@@ -42,16 +43,12 @@ export interface CaptureTrigger {
  * (3.7) and is replaced by Anki's own descriptor the moment the sidebar can
  * reach it (4.6).
  */
-export const FALLBACK_NOTE_TYPE = createNoteType({
-  name: "Basic",
-  fields: ["Front", "Back"],
-});
-
-export const FALLBACK_DECK = "Default";
-
 export const FALLBACK_DEFAULTS: GenerationDefaults = {
-  deck: FALLBACK_DECK,
-  noteType: FALLBACK_NOTE_TYPE,
+  deck: DEFAULT_SETTINGS.defaultDeck,
+  noteType: DEFAULT_SETTINGS.defaultNoteType,
+  tags: DEFAULT_SETTINGS.defaultTags,
+  fieldMapping: DEFAULT_SETTINGS.fieldMapping,
+  sourceUrlStyle: DEFAULT_SETTINGS.sourceUrlStyle,
 };
 
 /**
@@ -69,7 +66,13 @@ export interface CaptureDeps {
   readonly drafts: DraftStore;
   /** Where a capture waits when a draft is already in flight (7.4). */
   readonly pending: DraftStore;
-  readonly defaults?: GenerationDefaults;
+  /**
+   * Resolved per gesture rather than passed as a value (M8): the deck a card
+   * starts in depends on the deck the last one went into, and the background
+   * is unloaded when idle, so there is nothing to cache it in anyway. Called
+   * after `sidebar.open`, so it cannot cost the gesture.
+   */
+  readonly defaults?: () => GenerationDefaults | Promise<GenerationDefaults>;
   readonly now?: () => Date;
   /** Injected so the timeout is testable without waiting for it. */
   readonly sidebarTimeoutMs?: number;
@@ -241,7 +244,7 @@ async function finish(
 
   const draft = generateFromCapture(
     filled,
-    deps.defaults ?? FALLBACK_DEFAULTS,
+    deps.defaults === undefined ? FALLBACK_DEFAULTS : await deps.defaults(),
     {
       ...(deps.now === undefined ? {} : { now: deps.now }),
     },

@@ -135,3 +135,58 @@ describe("generateFromCapture", () => {
     ).toEqual(BASIC_GENERATOR);
   });
 });
+
+describe("the source, written into fields", () => {
+  // Test 9 of the M8 plan, at the layer a capture goes through.
+  it("puts the source URL in the field the settings name", () => {
+    const draft = generateBasicCard(
+      SELECTION,
+      CONTEXT,
+      { ...DEFAULTS, fieldMapping: { sourceUrl: "Back", sourceTitle: "" } },
+      { now: AT },
+    );
+
+    expect(draft.fields.Back).toBe(CONTEXT.url);
+  });
+
+  it("writes nothing into a field by default", () => {
+    const draft = generateBasicCard(SELECTION, CONTEXT, DEFAULTS, { now: AT });
+
+    expect(draft.fields.Back).toBe("");
+  });
+
+  it("honours the source-URL style", () => {
+    const draft = generateBasicCard(
+      SELECTION,
+      CONTEXT,
+      {
+        ...DEFAULTS,
+        fieldMapping: { sourceUrl: "Back", sourceTitle: "" },
+        sourceUrlStyle: "link" as const,
+      },
+      { now: AT },
+    );
+
+    expect(draft.fields.Back).toBe(
+      '<a href="https://example.test/france">France — Example</a>',
+    );
+  });
+
+  it("carries the mapping through a capture too", () => {
+    const draft = generateFromCapture(
+      {
+        text: "Paris is the capital of France.",
+        html: "",
+        context: CONTEXT.surroundingText,
+        heading: "",
+        title: CONTEXT.title,
+        url: CONTEXT.url,
+        warnings: [],
+      },
+      { ...DEFAULTS, fieldMapping: { sourceUrl: "", sourceTitle: "Back" } },
+      { now: AT },
+    );
+
+    expect(draft.fields.Back).toBe(CONTEXT.title);
+  });
+});

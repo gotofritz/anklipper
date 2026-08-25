@@ -35,7 +35,10 @@ import type { AnkiAction, TemplateMap } from "./types";
  * origin and whether the host permission has been granted, are injected.
  */
 export interface AnkiClientConfig {
-  /** Defaults to the add-on's own default; M8 makes it a setting (4.1). */
+  /**
+   * Defaults to the add-on's own default (4.1). It is a setting from M8, and
+   * `from-settings.ts` is what turns one into this config.
+   */
   readonly endpoint?: string;
   /** From `OriginPort.extensionOrigin()`. Read at runtime, never hardcoded (P8). */
   readonly origin: string;

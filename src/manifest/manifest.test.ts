@@ -42,12 +42,37 @@ describe("manifest permissions", () => {
     },
   );
 
+  // M8 makes the endpoint a setting, because AnkiConnect's own
+  // `webBindAddress` and `webBindPort` are settings. A port the manifest does
+  // not name is a port the browser will not let the extension reach, so the
+  // other loopback ports are *optional* — nothing is granted at install, and
+  // the options page asks for exactly the one the user typed.
+  it.each(["firefox", "chrome"])(
+    "offers %s loopback and nothing else as an optional host",
+    (target) => {
+      expect(manifestExtras(target).optional_host_permissions).toEqual([
+        "http://127.0.0.1/*",
+        "http://localhost/*",
+      ]);
+    },
+  );
+
   it("never asks for every site", () => {
     for (const target of ["firefox", "chrome"]) {
       const extras = manifestExtras(target);
-      expect([...extras.permissions, ...extras.host_permissions]).not.toContain(
-        "<all_urls>",
-      );
+      expect([
+        ...extras.permissions,
+        ...extras.host_permissions,
+        ...extras.optional_host_permissions,
+      ]).not.toContain("<all_urls>");
+    }
+  });
+
+  // P6 and the privacy rule: nothing this extension can be pointed at is off
+  // this machine, whatever ends up in the endpoint setting.
+  it("offers no optional host that is not this machine", () => {
+    for (const origin of manifestExtras("firefox").optional_host_permissions) {
+      expect(origin).toMatch(/^http:\/\/(127\.0\.0\.1|localhost)\/\*$/);
     }
   });
 

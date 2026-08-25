@@ -1,5 +1,10 @@
 import type { CardDraft } from "@/core/draft";
-import type { DraftStore, DraftStoreError } from "@/core/ports/types";
+import type {
+  DraftStore,
+  DraftStoreError,
+  RememberedStore,
+  RememberedStoreError,
+} from "@/core/ports/types";
 import { ok, type Result } from "@/core/result";
 
 /**
@@ -47,4 +52,21 @@ export function dismissPending(
   pending: DraftStore,
 ): Promise<Result<void, DraftStoreError>> {
   return pending.clear();
+}
+
+/**
+ * Note the deck a card went into, so the next capture starts there (8.5).
+ *
+ * On the add rather than on the dropdown: a deck someone scrolled past is not
+ * evidence of anything, and a deck a card is actually in is. It is remembered
+ * state and not a setting — resetting the settings leaves it alone, and it
+ * changing is not an edit to the user's configuration.
+ */
+export function rememberDeck(
+  remembered: RememberedStore,
+  deck: string,
+): Promise<Result<void, RememberedStoreError>> {
+  if (deck.trim() === "") return Promise.resolve(ok(undefined));
+
+  return remembered.save({ lastDeck: deck });
 }

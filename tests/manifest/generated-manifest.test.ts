@@ -14,12 +14,14 @@ import { CONTENT_SCRIPT_FILE } from "@/platform/scripting";
 type Manifest = {
   permissions?: string[];
   host_permissions?: string[];
+  optional_host_permissions?: string[];
   browser_specific_settings?: { gecko?: { id?: string } };
   key?: string;
   sidebar_action?: unknown;
   side_panel?: unknown;
   commands?: Record<string, unknown>;
   content_scripts?: unknown;
+  options_ui?: { page?: string; open_in_tab?: boolean };
 };
 
 const built: Record<string, Manifest> = {};
@@ -60,6 +62,20 @@ describe("generated manifest", () => {
     },
   );
 
+  // M8. The endpoint is a setting because AnkiConnect's own bind address and
+  // port are; a port the manifest does not name is one the browser will not
+  // let the extension reach. Optional, so nothing is granted at install, and
+  // loopback-only, so no setting can point this extension off the machine.
+  it.each(["firefox", "chrome"])(
+    "offers %s the other loopback ports, and nothing else, as optional",
+    (browser) => {
+      expect(built[browser]?.optional_host_permissions).toEqual([
+        "http://127.0.0.1/*",
+        "http://localhost/*",
+      ]);
+    },
+  );
+
   it("pins the extension identity on both targets, so the origin survives a reload", () => {
     expect(built.firefox?.browser_specific_settings?.gecko?.id).toBe(
       "anklipper@gotofritz.net",
@@ -94,6 +110,16 @@ describe("generated manifest", () => {
     expect(Object.keys(built[browser]?.commands ?? {})).toEqual([
       "create-anki-card",
     ]);
+  });
+
+  // M8's options page. It needs no permission of its own — which is the
+  // point of asserting it beside the permission set rather than on its own.
+  it.each(["firefox", "chrome"])("gives %s an options page", (browser) => {
+    expect(built[browser]?.options_ui?.page).toBe("options.html");
+  });
+
+  it("opens the options page in a tab, not in a panel a form does not fit", () => {
+    expect(built.firefox?.options_ui?.open_in_tab).toBe(true);
   });
 
   it("gives each browser its own sidebar surface", () => {

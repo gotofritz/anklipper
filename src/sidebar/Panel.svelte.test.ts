@@ -6,6 +6,7 @@ import type { CaptureWarning } from "@/core/capture";
 import { createDraft } from "@/core/draft";
 import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
 import { createFakeDraftStore } from "@/core/ports/fakes/fake-draft-store";
+import { createFakeRememberedStore } from "@/core/ports/fakes/fake-remembered-store";
 import { BASIC } from "@/fixtures/note-types";
 
 import Panel from "./Panel.svelte";
@@ -20,7 +21,7 @@ const noDraft = async (): Promise<DraftStatus> => ({ kind: "empty" });
 const noChanges = () => () => {};
 
 type PanelProps = ComponentProps<typeof Panel>;
-type PanelDefaults = "anki" | "drafts" | "pending";
+type PanelDefaults = "anki" | "drafts" | "pending" | "remembered";
 
 /** The panel now owns the two draft slots (7.3, 7.4), so every case has both. */
 function renderPanel(
@@ -29,11 +30,19 @@ function renderPanel(
 ) {
   const drafts = createFakeDraftStore();
   const pending = createFakeDraftStore();
+  const remembered = createFakeRememberedStore();
 
   return {
     drafts,
     pending,
-    ...render(Panel, { anki: client(), drafts, pending, ...props }),
+    remembered,
+    ...render(Panel, {
+      anki: client(),
+      drafts,
+      pending,
+      remembered,
+      ...props,
+    }),
   };
 }
 
@@ -463,5 +472,72 @@ describe("re-reading while the user is editing", () => {
         "Berlin is the capital of Germany.",
       ),
     );
+  });
+});
+
+/** M8. Settings are reachable from the panel, and the deck used is noted. */
+describe("settings, from the panel", () => {
+  it("offers a way into the settings", async () => {
+    const openSettings = vi.fn();
+    renderPanel({
+      connect: never,
+      loadDraft: noDraft,
+      subscribe: noChanges,
+      openSettings,
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: /settings/i }));
+
+    expect(openSettings).toHaveBeenCalled();
+  });
+
+  it("offers no settings button when there is no page to open", () => {
+    renderPanel({ connect: never, loadDraft: noDraft, subscribe: noChanges });
+
+    expect(screen.queryByRole("button", { name: /settings/i })).toBeNull();
+  });
+
+  // Test 8 of the M8 plan: the deck the card went into is what the next
+  // capture starts from (8.5).
+  it("remembers the deck a card was added to", async () => {
+    const { drafts, remembered } = renderPanel({
+      connect: never,
+      loadDraft: async () => ({
+        kind: "captured",
+        draft: draftWith(),
+        pending: undefined,
+      }),
+      subscribe: noChanges,
+    });
+    await drafts.save(draftWith());
+    await screen.findByLabelText("Front");
+
+    await fireEvent.click(screen.getByRole("button", { name: /add card/i }));
+
+    await vi.waitFor(async () => {
+      const stored = await remembered.load();
+      expect(stored.ok && stored.value.lastDeck).toBe("Geography");
+    });
+  });
+
+  it("remembers nothing when the card was only discarded", async () => {
+    const { drafts, remembered } = renderPanel({
+      connect: never,
+      loadDraft: async () => ({
+        kind: "captured",
+        draft: draftWith(),
+        pending: undefined,
+      }),
+      subscribe: noChanges,
+    });
+    await drafts.save(draftWith());
+    await screen.findByLabelText("Front");
+
+    await fireEvent.click(
+      screen.getByRole("button", { name: /discard card/i }),
+    );
+
+    const stored = await remembered.load();
+    expect(stored.ok && stored.value.lastDeck).toBeUndefined();
   });
 });

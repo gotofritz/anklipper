@@ -1,10 +1,14 @@
 <script lang="ts">
-  import type { AnkiClient, DraftStore } from "@/core/ports/types";
+  import type {
+    AnkiClient,
+    DraftStore,
+    RememberedStore,
+  } from "@/core/ports/types";
 
   import CardEditor from "./CardEditor.svelte";
   import type { DraftStatus, SidebarStatus } from "./connect";
   import { draftStoreErrorCopy } from "./error-copy";
-  import { dismissPending, takePending } from "./session";
+  import { dismissPending, rememberDeck, takePending } from "./session";
 
   // The panel is handed its reads rather than building them, so it stays free
   // of `browser.*` (P3) and the tests can drive every state. The two slots are
@@ -16,6 +20,8 @@
     anki,
     drafts,
     pending,
+    remembered,
+    openSettings,
     onCancel,
   }: {
     connect: () => Promise<SidebarStatus>;
@@ -28,6 +34,14 @@
     drafts: DraftStore;
     /** The capture that arrived while that one was still open (7.4). */
     pending: DraftStore;
+    /** Where the deck a card went into is noted, for the next capture (8.5). */
+    remembered: RememberedStore;
+    /**
+     * Open the options page. Absent in tests that do not care, and absent on
+     * a browser with no options page to open — hence a button that is not
+     * rendered rather than one that does nothing.
+     */
+    openSettings?: () => void;
     onCancel?: () => void;
   } = $props();
 
@@ -111,6 +125,11 @@
   // the slot over, which does not depend on which note it was.
   async function onAdded(): Promise<void> {
     addedCapture = draft?.createdAt;
+    // 8.5, on the add rather than on the dropdown: a deck a card is actually
+    // in is evidence of what the user is doing; one they scrolled past is not.
+    // A failure here costs the next capture its starting deck and nothing
+    // more, so it does not join the slot error the user is asked to act on.
+    if (draft !== undefined) await rememberDeck(remembered, draft.deck);
     await take();
   }
 
@@ -128,7 +147,12 @@
 </script>
 
 <main>
-  <h1>Anklipper</h1>
+  <div class="top">
+    <h1>Anklipper</h1>
+    {#if openSettings !== undefined}
+      <button type="button" onclick={openSettings}>Settings</button>
+    {/if}
+  </div>
   <p role="status">{label}</p>
 
   {#if slotError !== undefined}
@@ -181,6 +205,14 @@
 </main>
 
 <style>
+  .top {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    justify-content: space-between;
+  }
+
   .prompt {
     border: 1px solid var(--line, #ccc);
     margin-bottom: 0.6rem;

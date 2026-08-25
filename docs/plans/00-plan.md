@@ -36,6 +36,15 @@ user gesture covers extraction. Anything beyond this list needs a justification
 in the subplan that adds it. On Firefox MV3 a declared host permission is not
 granted at install; check and request it at runtime (M2).
 
+**Added at M8, with its justification in that subplan:** the *optional* host
+permissions `http://127.0.0.1/*` and `http://localhost/*`. AnkiConnect's own
+`webBindAddress` and `webBindPort` are the user's, so the endpoint is a
+setting — and a port the manifest does not name is one the browser will not let
+the extension reach. Optional, so the install-time set is unchanged; loopback
+only, and the settings schema refuses any other host, so no setting can point
+the extension off the machine; and asked for one port at a time, from a
+gesture.
+
 **AnkiConnect.** Its default config allowlists no extension origin. The plan
 assumed that made the first-run state a rejected one, with the add-on's
 `requestPermission` handshake as the way out (P9). **M4's manual pass against a
@@ -78,7 +87,7 @@ AnkiConnect interface precedes the editor that renders its data.
 | M5 | Selection and page-context extraction; context menu and shortcut | M2, M3 | done: `docs/archive/05-selection-and-page-context.md` |
 | M6 | Sidebar editor, built against the fake adapter | M3, M4 | done: `docs/archive/06-svelte-editor.md` |
 | M7 | End-to-end MVP, with the draft persisted from the moment it exists | M4, M5, M6 | done: `docs/archive/07-end-to-end-mvp.md` |
-| M8 | Settings, storage, and schema migration | M7 | `08-settings-and-persistence.md` |
+| M8 | Settings, storage, and schema migration | M7 | done: `docs/archive/08-settings-and-persistence.md` |
 | M9 | Onboarding, connection diagnostics, repeat-capture polish | M8 | `09-onboarding-and-diagnostics.md` |
 | M10 | Card editor parity: every note type, its own fields in order, formatting, sticky fields, tags | M9 | `10-card-editor-parity.md` |
 | M11 | Media: region screenshots, page images, paste and drop | M10 | `11-media-and-screenshots.md` |

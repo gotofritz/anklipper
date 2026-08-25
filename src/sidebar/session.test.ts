@@ -7,7 +7,9 @@ import type { DraftStore } from "@/core/ports/types";
 import { err, ok } from "@/core/result";
 import { BASIC } from "@/fixtures/note-types";
 
-import { dismissPending, takePending } from "./session";
+import { createFakeRememberedStore } from "@/core/ports/fakes/fake-remembered-store";
+
+import { dismissPending, rememberDeck, takePending } from "./session";
 
 function draftOf(title: string, createdAt: string): CardDraft {
   return createDraft({
@@ -107,5 +109,34 @@ describe("dismissPending", () => {
       ok: true,
       value: IN_FLIGHT,
     });
+  });
+});
+
+describe("rememberDeck", () => {
+  // Test 8 of the M8 plan: what makes the next capture start where this one
+  // ended. Remembered, not configured (8.5).
+  it("records the deck the card actually went into", async () => {
+    const remembered = createFakeRememberedStore();
+
+    await rememberDeck(remembered, "Spanish::Verbs");
+
+    const stored = await remembered.load();
+    expect(stored.ok && stored.value.lastDeck).toBe("Spanish::Verbs");
+  });
+
+  it("records nothing for a card with no deck", async () => {
+    const remembered = createFakeRememberedStore({ lastDeck: "Geography" });
+
+    await rememberDeck(remembered, "   ");
+
+    const stored = await remembered.load();
+    expect(stored.ok && stored.value.lastDeck).toBe("Geography");
+  });
+
+  it("reports a write it could not make, rather than throwing", async () => {
+    const remembered = createFakeRememberedStore();
+    remembered.failWith({ kind: "write-failed", message: "storage full" });
+
+    expect((await rememberDeck(remembered, "Geography")).ok).toBe(false);
   });
 });

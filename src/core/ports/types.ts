@@ -1,6 +1,10 @@
 import type { CardDraft } from "../draft";
 import type { NoteType } from "../note-type";
 import type { Result } from "../result";
+import type { Settings } from "../settings";
+
+export type { Settings } from "../settings";
+export { DEFAULT_SETTINGS } from "../settings";
 
 /**
  * The ports the domain layer talks to (3.5, P3). Interfaces only: the real
@@ -76,10 +80,17 @@ export type StoreErrorKind =
   /** Something is stored under the key, but not in a shape this version reads. */
   | "malformed-stored-value";
 
-export interface DraftStoreError {
+/**
+ * Why a store could not answer. One shape for all three stores: they fail for
+ * the same three reasons, and a separate interface per store would be three
+ * copies of it to keep in step.
+ */
+export interface StoreError {
   readonly kind: StoreErrorKind;
   readonly message: string;
 }
+
+export type DraftStoreError = StoreError;
 
 /**
  * The draft in progress. Both browsers unload the background when idle, so the
@@ -91,25 +102,39 @@ export interface DraftStore {
   clear(): Promise<Result<void, DraftStoreError>>;
 }
 
-export interface SettingsStoreError {
-  readonly kind: StoreErrorKind;
-  readonly message: string;
-}
+export type SettingsStoreError = StoreError;
 
-/** What the user has chosen. M8 owns the schema and its migrations. */
-export interface Settings {
-  readonly defaultDeck: string;
-  readonly defaultNoteType: string;
-  readonly defaultTags: readonly string[];
-}
-
-export const DEFAULT_SETTINGS: Settings = {
-  defaultDeck: "",
-  defaultNoteType: "",
-  defaultTags: [],
-};
-
+/**
+ * What the user has chosen. The schema, its defaults, and the rules for
+ * reading it back are `src/core/settings.ts`; the migrations that run first
+ * are `src/core/settings-migrations.ts` (M8).
+ *
+ * `load` answers with `Settings` and not with a partial one: a value that
+ * does not validate degrades to its own default rather than failing the read
+ * (8.2), so the only thing left to report is storage itself refusing.
+ */
 export interface SettingsStore {
   load(): Promise<Result<Settings, SettingsStoreError>>;
   save(settings: Settings): Promise<Result<void, SettingsStoreError>>;
+  /** Back to the defaults, without touching what is merely remembered (8.5). */
+  reset(): Promise<Result<void, SettingsStoreError>>;
+}
+
+/**
+ * What the extension remembers, as opposed to what the user configured (8.5).
+ *
+ * Kept apart from `Settings` on purpose: "reset settings" must not erase it,
+ * and a deck changing under the user because they last used a different one
+ * should not feel like their configuration was edited.
+ */
+export interface Remembered {
+  /** The deck the last card actually went into. */
+  readonly lastDeck?: string;
+}
+
+export type RememberedStoreError = StoreError;
+
+export interface RememberedStore {
+  load(): Promise<Result<Remembered, RememberedStoreError>>;
+  save(remembered: Remembered): Promise<Result<void, RememberedStoreError>>;
 }

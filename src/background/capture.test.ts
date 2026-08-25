@@ -12,7 +12,12 @@ import type { ScriptingPort } from "@/platform/scripting";
 import type { SidebarPort } from "@/platform/sidebar";
 import { BASIC } from "@/fixtures/note-types";
 
+import { createFakeRememberedStore } from "@/core/ports/fakes/fake-remembered-store";
+import { createFakeSettingsStore } from "@/core/ports/fakes/fake-settings-store";
+import { CLOZE } from "@/fixtures/note-types";
+
 import { captureFromGesture, describeCapture } from "./capture";
+import { resolveDefaults } from "./defaults";
 
 const CAPTURE: PageCapture = {
   text: "Paris is the capital of France.",
@@ -484,5 +489,120 @@ describe("a capture while a draft is already in flight", () => {
     );
 
     expect(report).toMatchObject({ outcome: "captured", stored: "pending" });
+  });
+});
+
+// M8. The capture no longer starts from constants; it starts from what the
+// user configured, and from the deck they last added to.
+describe("a capture and the user's settings", () => {
+  // Test 7 of the M8 plan, end to end through a gesture.
+  it("starts a new draft on the configured deck, note type, and tags", async () => {
+    const settings = createFakeSettingsStore({
+      defaultDeck: "Spanish::Verbs",
+      defaultNoteType: CLOZE,
+      defaultTags: ["vocab"],
+    });
+
+    const result = await captureFromGesture(
+      { tabId: 7 },
+      deps({
+        defaults: () =>
+          resolveDefaults({
+            settings,
+            remembered: createFakeRememberedStore(),
+          }),
+      }),
+    );
+
+    expect(result.ok && result.value.draft.deck).toBe("Spanish::Verbs");
+    expect(result.ok && result.value.draft.noteType.name).toBe("Cloze");
+    expect(result.ok && result.value.draft.tags).toEqual(["vocab"]);
+  });
+
+  // Test 8's second half: the remembered deck reaches an actual capture.
+  it("starts on the deck the last card went into", async () => {
+    const result = await captureFromGesture(
+      { tabId: 7 },
+      deps({
+        defaults: () =>
+          resolveDefaults({
+            settings: createFakeSettingsStore({
+              defaultDeck: "Spanish::Verbs",
+            }),
+            remembered: createFakeRememberedStore({ lastDeck: "Geography" }),
+          }),
+      }),
+    );
+
+    expect(result.ok && result.value.draft.deck).toBe("Geography");
+  });
+
+  // Test 9, through the gesture.
+  it("puts the source URL in the field the settings map it to", async () => {
+    const settings = createFakeSettingsStore({
+      fieldMapping: { sourceUrl: "Back", sourceTitle: "" },
+    });
+
+    const result = await captureFromGesture(
+      { tabId: 7 },
+      deps({
+        defaults: () =>
+          resolveDefaults({
+            settings,
+            remembered: createFakeRememberedStore(),
+          }),
+      }),
+    );
+
+    expect(result.ok && result.value.draft.fields.Back).toBe(
+      "https://example.test/france",
+    );
+  });
+
+  // 8.2, asserted rather than assumed: corrupt stored data cannot stop a
+  // capture, which is the first thing the extension does for a user.
+  it("still captures when the settings cannot be read at all", async () => {
+    const settings = createFakeSettingsStore();
+    settings.failWith({ kind: "read-failed", message: "storage unavailable" });
+
+    const result = await captureFromGesture(
+      { tabId: 7 },
+      deps({
+        defaults: () =>
+          resolveDefaults({
+            settings,
+            remembered: createFakeRememberedStore(),
+          }),
+      }),
+    );
+
+    expect(result.ok && result.value.draft.deck).toBe("Default");
+    expect(result.ok && result.value.draft.fields.Front).toBe(
+      "Paris is the capital of France.",
+    );
+  });
+
+  // The gesture is forfeited if anything is awaited before `sidebar.open`,
+  // and resolving settings is now the first thing that would be.
+  it("opens the sidebar before it resolves any settings", async () => {
+    const sidebar = fakeSidebar();
+    let resolvedBeforeOpen = false;
+
+    void captureFromGesture(
+      { tabId: 7 },
+      deps({
+        sidebar,
+        defaults: () => {
+          resolvedBeforeOpen = sidebar.calls === 0;
+          return resolveDefaults({
+            settings: createFakeSettingsStore(),
+            remembered: createFakeRememberedStore(),
+          });
+        },
+      }),
+    );
+
+    expect(sidebar.calls).toBe(1);
+    expect(resolvedBeforeOpen).toBe(false);
   });
 });

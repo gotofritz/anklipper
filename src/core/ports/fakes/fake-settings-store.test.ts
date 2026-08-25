@@ -24,10 +24,19 @@ describe("createFakeSettingsStore", () => {
   it("gives back what was saved", async () => {
     const store = createFakeSettingsStore();
 
-    await store.save({ ...DEFAULT_SETTINGS, defaultNoteType: "Cloze" });
+    await store.save({ ...DEFAULT_SETTINGS, defaultDeck: "Cloze::Deck" });
     const result = await store.load();
 
-    expect(isOk(result) && result.value.defaultNoteType).toBe("Cloze");
+    expect(isOk(result) && result.value.defaultDeck).toBe("Cloze::Deck");
+  });
+
+  it("goes back to the defaults on reset (8.5)", async () => {
+    const store = createFakeSettingsStore({ defaultDeck: "Geography" });
+
+    await store.reset();
+    const result = await store.load();
+
+    expect(isOk(result) && result.value).toEqual(DEFAULT_SETTINGS);
   });
 
   it("can be driven into failure and reports it in the port's error shape", async () => {
@@ -36,5 +45,6 @@ describe("createFakeSettingsStore", () => {
 
     expect(isErr(await store.load())).toBe(true);
     expect(isErr(await store.save(DEFAULT_SETTINGS))).toBe(true);
+    expect(isErr(await store.reset())).toBe(true);
   });
 });

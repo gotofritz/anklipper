@@ -51,3 +51,20 @@ export function createPermissions(): PermissionsPort {
     },
   };
 }
+
+/**
+ * The permission a given endpoint needs (M8).
+ *
+ * The endpoint is a setting, so the permission is no longer a constant: a
+ * request to a loopback port the extension holds no permission for fails in a
+ * way indistinguishable from Anki being closed, and the user would be sent to
+ * start something that is already running. The declared permission covers the
+ * add-on's default; the rest are optional and asked for when configured.
+ */
+export function hostPermissionFor(endpoint: string): PermissionRequest {
+  try {
+    return { origins: [`${new URL(endpoint).origin}/*`] };
+  } catch {
+    return ANKI_CONNECT_HOST_PERMISSION;
+  }
+}

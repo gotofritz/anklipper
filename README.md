@@ -22,8 +22,9 @@ describes what it will do. There is nothing to download at the moment.
    the tags.
 5. You click add, and the card goes straight into Anki.
 
-Anklipper also keeps a note of where the text came from, so a card can carry
-the page title and address alongside whatever you wrote.
+Anklipper also keeps a note of where the text came from. If your cards have a
+field for it, you can have the page title or its address written straight into
+that field — see **Settings** below.
 
 If you want a fill-in-the-blank card instead, press **Convert to cloze**.
 Select each word or phrase you want hidden and press **Mark selection**, and
@@ -33,6 +34,34 @@ Some pages hide their text in a way no add-on can read — PDFs opened in the
 browser's own viewer are the common one. When that happens, Anklipper tells
 you what it could not read rather than quietly making a card with a piece
 missing.
+
+## Settings
+
+Anklipper has a settings page. Open the panel and click **Settings**, or find
+Anklipper in your browser's add-ons list and open its options.
+
+You can change:
+
+- **The deck new cards start in**, and **the note type** they start on. Picked
+  from the ones your own Anki has, so there is nothing to spell.
+- **Tags every new card gets**, if you want any.
+- **Where the page title and address go.** By default they are kept with the
+  card but not written into it. If your note type has a field for a source,
+  point one of them at it — as the plain address, or as a link labelled with
+  the page title.
+- **Anki's address and how long to wait for it.** Leave these alone unless you
+  changed AnkiConnect's own settings. Anklipper only ever talks to your own
+  computer, and it will not accept an address anywhere else.
+- **An API key**, if — and only if — you set one in AnkiConnect. Almost nobody
+  has. It is kept on your computer, sent only to Anki, and never shown in
+  anything Anklipper writes out.
+
+**Reset to defaults** puts all of that back. It does not forget the deck you
+last used.
+
+There is one thing Anklipper remembers rather than asks about: **the deck your
+last card went into**. The next card starts there. Resetting the settings
+leaves it alone.
 
 ## Your unfinished card is kept
 
@@ -78,11 +107,20 @@ permission is what lets the two talk to each other, and you only give it
 once. Until you do, Anklipper says so and everything except adding a card
 still works.
 
+If you change Anki's address in Anklipper's settings, Firefox will ask again
+for the new one when you save. Say yes to that too, or cards cannot be added
+there.
+
 ## Your information stays on your computer
 
 Anklipper talks only to the copy of Anki running on your own machine. The
 text you select, and anything you type into a card, is not sent anywhere
-else. Nothing goes to us, and nothing goes to any other service.
+else. Nothing goes to us, and nothing goes to any other service. That is not
+a promise about how we behave: Anklipper will not accept an address that is
+not on your own computer, and your browser will not let it reach one.
+
+Your settings — including an API key, if you have one — are kept on your
+computer and nowhere else.
 
 If that ever changes — for a feature that needs help from an outside service
 to write cards for you — it will be something you switch on yourself, after
