@@ -37,20 +37,29 @@ cloze flow works without one, because a draft generated into a cloze note type
 lands the selection in `Text` already. M7's flow (its test 1a) is where the
 conversion gets its affordance.
 
-**The panel takes the `AnkiClient` as an optional prop.** Wiring AnkiConnect is
-this milestone's non-goal, so `App.svelte` still builds no adapter, and a
-panel handed no client keeps showing M5's capture summary. M7 passes the real
-client in and that branch goes.
+**The sidebar entrypoint builds the adapter, which the plan calls M7's.** The
+editor was first delivered behind an optional `anki` prop, leaving
+`App.svelte` unwired to respect the non-goal — and the result was a milestone
+whose UI could not be looked at in a development build. An editor nobody can
+open is not shipped, so `App.svelte` now composes `createAnkiClient` over the
+runtime origin (P8) and the host-permission check, and `Panel` requires the
+port. M5's read-only capture summary is gone with it. What is still M7's: the
+draft persisted from the moment it exists (7.1), retry (7.5), restore-on-open,
+and deck and note-type defaults — this is the client and nothing else.
 
-**The narrow-width criterion is CSS, not a test — and is not yet verified.**
-jsdom has no layout engine: `offsetWidth` is always 0, so "no horizontal
-scrolling at 300px" cannot be asserted there, and the plan's "tested at a
-narrow width" is not something this harness can do. What the editor has
-instead is one column, no fixed widths, `box-sizing: border-box` and
-`overflow-wrap: anywhere` throughout, and every control set to `min-width: 0`
-so a flex row may shrink. The visual check needs the editor mounted in a real
-sidebar, which needs a client, which is M7 — so it is listed there rather than
-claimed here.
+The prop is required rather than optional on purpose: `svelte-check` reports
+`Property 'anki' is missing … but required` if the editor is ever left
+unmounted again, so CI catches this class of mistake instead of a person
+noticing the sidebar looks unchanged.
+
+**The narrow-width criterion is CSS plus a manual check, not a test.** jsdom
+has no layout engine: `offsetWidth` is always 0, so "no horizontal scrolling
+at 300px" cannot be asserted there, and the plan's "tested at a narrow width"
+is not something this harness can do. What the editor has instead is one
+column, no fixed widths, `box-sizing: border-box` and `overflow-wrap: anywhere`
+throughout, and every control set to `min-width: 0` so a flex row may shrink.
+The visual pass is step 7 of the developer guide's Firefox checklist, runnable
+now that the editor is mounted.
 
 **A cloze hint sits above the controls.** Anki's own `Ctrl+Shift+C` marks the
 selection, and the plan asks for "a keyboard shortcut for the common case"

@@ -452,9 +452,14 @@ reports that Anki already holds the first field, and it stops appearing the
 moment that field changes: a warning about text the user has already replaced
 is worse than no warning.
 
-**The panel's `AnkiClient` is optional until M7**, whose job is wiring the
-adapter into the entrypoint. A panel handed no client shows M5's capture
-summary rather than an editor that could not submit.
+**The sidebar entrypoint composes the adapter.** `App.svelte` builds
+`createAnkiClient` over the runtime origin (P8) and the host-permission check
+and hands it to `Panel`, which requires it — a missing one is a `svelte-check`
+error, so the editor cannot be left unmounted. Until the user grants the
+loopback host permission, every call answers `permission-missing` before
+touching the network, and the editor says so and offers to retry; the fields,
+tags, and cloze controls work regardless. Persisting the draft, retry, and
+deck and note-type defaults are still M7's.
 
 ## Permissions
 

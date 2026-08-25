@@ -420,12 +420,19 @@ The extraction itself — the block ancestor, the heading, the caps, the
 whitespace handling — is covered by `src/content/extract.dom.test.ts` and
 does not need a browser.
 
-### 7. The editor, once there is a client for it
+### 7. The editor
 
-Not yet runnable. M6 built the editor against the `AnkiClient` port and its
-in-memory fake; the sidebar entrypoint builds no adapter, so a development
-build still shows M5's capture summary. Two things need eyes rather than a
-test, and both wait on M7 wiring the adapter in:
+Capture something first — the sidebar shows *Select some text on a page…*
+until a draft exists. The editor then replaces it.
+
+Without the host permission from step 2, every AnkiConnect call answers
+`permission-missing` before touching the network: the deck and note-type
+selectors hold only the draft's own values, and the editor says what is
+wrong and offers **Try again**. Editing, tagging, and cloze marking all work
+in that state; adding does not. Grant the permission and press **Try again**,
+and the lists fill.
+
+Two things need eyes rather than a test:
 
 - **The layout at a narrow width.** jsdom has no layout engine, so nothing in
   the suite can see a horizontal scrollbar. Drag the sidebar as narrow as
