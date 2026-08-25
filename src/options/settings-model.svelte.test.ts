@@ -194,3 +194,71 @@ describe("the settings view-model", () => {
     expect(settingsModel.loadError?.kind).toBe("read-failed");
   });
 });
+
+/**
+ * M8's endpoint setting is only real if the browser will let the extension
+ * reach it. The manifest declares the add-on's default port and offers the
+ * other loopback ports as optional, so a configured one has to be asked for —
+ * and the Save press is the user gesture Firefox requires.
+ */
+describe("the permission the configured endpoint needs", () => {
+  it("asks for it when saving, before anything is awaited", async () => {
+    const asked: string[] = [];
+    const settingsModel = model({
+      requestHostPermission: async (endpoint: string) => {
+        asked.push(endpoint);
+        return true;
+      },
+    });
+    await settingsModel.load();
+    settingsModel.setEndpoint("http://127.0.0.1:9999");
+
+    const saving = settingsModel.save();
+    // Synchronously, in the same task as the press: Firefox refuses a request
+    // made after an await.
+    expect(asked).toEqual(["http://127.0.0.1:9999"]);
+    await saving;
+  });
+
+  it("saves the settings anyway when the browser refuses, and says so", async () => {
+    const settings = createFakeSettingsStore();
+    const settingsModel = model({
+      settings,
+      requestHostPermission: async () => false,
+    });
+    await settingsModel.load();
+    settingsModel.setEndpoint("http://127.0.0.1:9999");
+
+    await settingsModel.save();
+
+    const stored = await settings.load();
+    expect(stored.ok && stored.value.endpoint).toBe("http://127.0.0.1:9999");
+    expect(settingsModel.hostPermission).toBe("refused");
+  });
+
+  it("says nothing about a permission the browser granted", async () => {
+    const settingsModel = model({ requestHostPermission: async () => true });
+    await settingsModel.load();
+
+    await settingsModel.save();
+
+    expect(settingsModel.hostPermission).toBe("granted");
+  });
+
+  it("does not ask when the settings would not be saved anyway", async () => {
+    const asked: string[] = [];
+    const settingsModel = model({
+      requestHostPermission: async (endpoint: string) => {
+        asked.push(endpoint);
+        return true;
+      },
+    });
+    await settingsModel.load();
+    settingsModel.setEndpoint("not a url");
+
+    await settingsModel.save();
+
+    expect(asked).toEqual([]);
+    expect(settingsModel.saveState).toBe("refused");
+  });
+});

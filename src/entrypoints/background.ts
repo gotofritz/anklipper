@@ -7,10 +7,7 @@ import { createCommands } from "@/platform/commands";
 import { createContextMenus } from "@/platform/context-menus";
 import { PENDING_KEY, createStoredDrafts } from "@/platform/draft-store";
 import { createOrigin } from "@/platform/origin";
-import {
-  ANKI_CONNECT_HOST_PERMISSION,
-  createPermissions,
-} from "@/platform/permissions";
+import { createPermissions, hostPermissionFor } from "@/platform/permissions";
 import { createStoredRemembered } from "@/platform/remembered-store";
 import { createRuntimeMessaging } from "@/platform/runtime-messaging";
 import { createScripting } from "@/platform/scripting";
@@ -74,8 +71,8 @@ export default defineBackground(() => {
   if (import.meta.env.DEV) {
     const permissions = createPermissions();
     const origin = createOrigin().extensionOrigin();
-    const hasHostPermission = () =>
-      permissions.has(ANKI_CONNECT_HOST_PERMISSION);
+    const hasHostPermission = (endpoint: string) =>
+      permissions.has(hostPermissionFor(endpoint));
 
     // Built from the settings, so a developer who moved AnkiConnect's port
     // gets a harness pointed at it (M8). Reading them is asynchronous, so the
@@ -86,7 +83,7 @@ export default defineBackground(() => {
       (globalThis as unknown as Record<string, unknown>).anklipper =
         createDevHarness({
           ...ankiConfigFrom(current, { origin, hasHostPermission }),
-          hasHostPermission,
+          hasHostPermission: () => hasHostPermission(current.endpoint),
         });
     });
   }

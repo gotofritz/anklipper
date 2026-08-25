@@ -1,4 +1,4 @@
-import { ANKI_CONNECT_URL } from "@/manifest/manifest";
+import { ANKI_CONNECT_URL, LOOPBACK_HOSTS } from "@/manifest/manifest";
 
 import { isWellFormedTag } from "./draft";
 import type { NoteType } from "./note-type";
@@ -137,17 +137,30 @@ function readMapping(value: unknown): FieldMapping {
   };
 }
 
-function isHttpUrl(value: string): boolean {
+/**
+ * An address on this machine, over plain HTTP.
+ *
+ * Loopback only, and the manifest agrees: `OPTIONAL_HOST_PERMISSIONS` names
+ * these two hosts and nothing else, so an endpoint elsewhere is one the
+ * browser would refuse anyway — and refusing it here is the difference between
+ * a message that names the mistake and a failure nobody can diagnose. It is
+ * also where P6's "nothing leaves this machine" stops being a promise about
+ * intentions: no setting can point this extension at a remote server.
+ */
+function isLocalHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
+    return (
+      parsed.protocol === "http:" &&
+      (LOOPBACK_HOSTS as readonly string[]).includes(parsed.hostname)
+    );
   } catch {
     return false;
   }
 }
 
 function readEndpoint(value: unknown): string {
-  return typeof value === "string" && isHttpUrl(value)
+  return typeof value === "string" && isLocalHttpUrl(value)
     ? value
     : DEFAULT_SETTINGS.endpoint;
 }
@@ -232,10 +245,10 @@ export function validateSettings(settings: Settings): readonly SettingsIssue[] {
     issues.push({ code: "deck-missing", message: "no default deck is set" });
   }
 
-  if (!isHttpUrl(settings.endpoint)) {
+  if (!isLocalHttpUrl(settings.endpoint)) {
     issues.push({
       code: "endpoint-invalid",
-      message: `${settings.endpoint} is not an http address`,
+      message: `${settings.endpoint} is not an http address on this machine`,
     });
   }
 

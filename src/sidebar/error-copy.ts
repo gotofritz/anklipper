@@ -157,7 +157,7 @@ const SETTINGS_COPY: Readonly<
 > = {
   "deck-missing": () => "Choose the deck new cards start in.",
   "endpoint-invalid": () =>
-    "AnkiConnect’s address has to be an http address, like http://127.0.0.1:8765.",
+    "AnkiConnect’s address has to be one on this computer, like http://127.0.0.1:8765. Anklipper never talks to anywhere else.",
   "timeout-invalid": () =>
     "How long to wait has to be a number of milliseconds above zero.",
   "tag-malformed": (issue) =>

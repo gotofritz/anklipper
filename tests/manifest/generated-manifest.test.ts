@@ -14,6 +14,7 @@ import { CONTENT_SCRIPT_FILE } from "@/platform/scripting";
 type Manifest = {
   permissions?: string[];
   host_permissions?: string[];
+  optional_host_permissions?: string[];
   browser_specific_settings?: { gecko?: { id?: string } };
   key?: string;
   sidebar_action?: unknown;
@@ -57,6 +58,20 @@ describe("generated manifest", () => {
     (browser) => {
       expect(built[browser]?.host_permissions).toEqual([
         "http://127.0.0.1:8765/*",
+      ]);
+    },
+  );
+
+  // M8. The endpoint is a setting because AnkiConnect's own bind address and
+  // port are; a port the manifest does not name is one the browser will not
+  // let the extension reach. Optional, so nothing is granted at install, and
+  // loopback-only, so no setting can point this extension off the machine.
+  it.each(["firefox", "chrome"])(
+    "offers %s the other loopback ports, and nothing else, as optional",
+    (browser) => {
+      expect(built[browser]?.optional_host_permissions).toEqual([
+        "http://127.0.0.1/*",
+        "http://localhost/*",
       ]);
     },
   );

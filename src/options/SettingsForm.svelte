@@ -24,12 +24,21 @@
   const {
     settings,
     anki,
+    requestHostPermission,
   }: {
     settings: SettingsStore;
     anki: AnkiClient;
+    /** Ask the browser for access to the configured endpoint (2.7, M8). */
+    requestHostPermission?: (endpoint: string) => Promise<boolean>;
   } = $props();
 
-  const model = untrack(() => createSettingsModel({ settings, anki }));
+  const model = untrack(() =>
+    createSettingsModel({
+      settings,
+      anki,
+      ...(requestHostPermission === undefined ? {} : { requestHostPermission }),
+    }),
+  );
 
   $effect(() => {
     void model.load();
@@ -263,6 +272,19 @@
 
   {#if model.notice !== undefined}
     <p class="problem" role="alert">{model.notice}</p>
+  {/if}
+
+  {#if model.hostPermission === "refused"}
+    <!--
+      Firefox MV3 grants no host permission at install, and the manifest names
+      only AnkiConnect's default port; any other loopback port is asked for
+      here, from the Save press. Refused, the setting still stands — it is the
+      user's choice — but adding a card would fail, so it is said out loud.
+    -->
+    <p class="problem" role="alert">
+      Your browser has not given Anklipper access to {model.settings.endpoint},
+      so cards cannot be added there yet. Press Save settings again to be asked.
+    </p>
   {/if}
 
   {#if model.saveState === "saved"}

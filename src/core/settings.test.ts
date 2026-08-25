@@ -88,6 +88,25 @@ describe("reading settings", () => {
     expect(readSettings({ endpoint: "http://127.0.0.1:9999" }).endpoint).toBe(
       "http://127.0.0.1:9999",
     );
+    expect(readSettings({ endpoint: "http://localhost:8765" }).endpoint).toBe(
+      "http://localhost:8765",
+    );
+  });
+
+  // P6: nothing this extension can be pointed at is off this machine. The
+  // manifest offers no optional host permission for anything else either, so
+  // an endpoint elsewhere could not have worked — it would only have failed
+  // in a way nobody could diagnose.
+  it("degrades an endpoint that is not on this machine", () => {
+    for (const endpoint of [
+      "http://example.test:8765",
+      "https://anki.example.test",
+      "http://192.168.1.5:8765",
+    ]) {
+      expect(readSettings({ endpoint }).endpoint).toBe(
+        DEFAULT_SETTINGS.endpoint,
+      );
+    }
   });
 
   it("degrades a timeout that is not a positive number", () => {
@@ -168,6 +187,21 @@ describe("validating what the user is about to save", () => {
         endpoint: "ftp://127.0.0.1:8765",
       }).map((issue) => issue.code),
     ).toEqual(["endpoint-invalid"]);
+  });
+
+  it("refuses an endpoint that is not on this machine", () => {
+    expect(
+      validateSettings({
+        ...DEFAULT_SETTINGS,
+        endpoint: "http://anki.example.test:8765",
+      }).map((issue) => issue.code),
+    ).toEqual(["endpoint-invalid"]);
+  });
+
+  it("accepts either name for this machine", () => {
+    for (const endpoint of ["http://127.0.0.1:8765", "http://localhost:1234"]) {
+      expect(validateSettings({ ...DEFAULT_SETTINGS, endpoint })).toEqual([]);
+    }
   });
 
   it("refuses a timeout that is not a positive whole number of milliseconds", () => {

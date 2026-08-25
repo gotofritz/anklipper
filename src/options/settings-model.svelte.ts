@@ -24,10 +24,27 @@ import { draftIssueCopy } from "@/sidebar/error-copy";
  */
 export type SaveState = "idle" | "saving" | "saved" | "failed" | "refused";
 
+/**
+ * Whether the browser will let the extension reach the configured endpoint
+ * (2.7, M8). `unknown` until a save has asked.
+ */
+export type HostPermissionState = "unknown" | "granted" | "refused";
+
 export interface SettingsModelDeps {
   readonly settings: SettingsStore;
   /** For the deck and note-type lists. The form is a choice, not a text box. */
   readonly anki: AnkiClient;
+  /**
+   * Ask the browser for access to this endpoint.
+   *
+   * The manifest declares the add-on's default port and offers the other
+   * loopback ports as optional, so a configured one has to be asked for. It is
+   * called **from the Save press, before anything is awaited**, because
+   * Firefox refuses a permission request made outside a user input handler —
+   * which is also why it is unconditional: checking first, then asking, would
+   * put an await in front of the ask.
+   */
+  readonly requestHostPermission?: (endpoint: string) => Promise<boolean>;
 }
 
 export interface SettingsModel {
@@ -42,6 +59,8 @@ export interface SettingsModel {
   readonly issues: readonly SettingsIssue[];
   readonly saveState: SaveState;
   readonly saveError: SettingsStoreError | undefined;
+  /** What the browser said about reaching the configured endpoint (2.7). */
+  readonly hostPermission: HostPermissionState;
   /** Storage refusing the *read*: the form still opens, on the defaults (8.2). */
   readonly loadError: SettingsStoreError | undefined;
   /** An intent the model refused, already in the user's words. */
@@ -76,6 +95,7 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
   let noteTypes = $state.raw<Resource<readonly NoteType[]>>({ kind: "idle" });
   let saveState = $state.raw<SaveState>("idle");
   let saveError = $state.raw<SettingsStoreError | undefined>(undefined);
+  let hostPermission = $state.raw<HostPermissionState>("unknown");
   let loadError = $state.raw<SettingsStoreError | undefined>(undefined);
   let notice = $state.raw<string | undefined>(undefined);
   let issues = $state.raw<readonly SettingsIssue[]>([]);
@@ -91,6 +111,9 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
     saveError = undefined;
     notice = undefined;
     issues = [];
+    // The last answer was about the endpoint as it was; an edit makes it
+    // stale, and an edit to anything else is about to re-ask anyway.
+    hostPermission = "unknown";
   }
 
   return {
@@ -128,6 +151,9 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
     },
     get saveError() {
       return saveError;
+    },
+    get hostPermission() {
+      return hostPermission;
     },
     get loadError() {
       return loadError;
@@ -255,10 +281,23 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
         return;
       }
 
+      // First, and synchronously: Firefox refuses a permission request made
+      // after an await, and this whole call runs inside the Save press.
+      // Unconditional for the same reason — checking first would be the await.
+      // Already-granted resolves true with no prompt.
+      const granted = deps.requestHostPermission?.(settings.endpoint);
+
       saveState = "saving";
       const saved = await deps.settings.save(settings);
       saveError = saved.ok ? undefined : saved.error;
       saveState = saved.ok ? "saved" : "failed";
+
+      // Saved either way: the endpoint is the user's choice, and a browser
+      // that would not grant access to it is a thing to say rather than a
+      // reason to throw the setting away.
+      if (granted !== undefined) {
+        hostPermission = (await granted) ? "granted" : "refused";
+      }
     },
 
     async reset(): Promise<void> {
@@ -270,6 +309,7 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
 
       issues = [];
       notice = undefined;
+      hostPermission = "unknown";
       saveError = done.ok ? undefined : done.error;
       saveState = done.ok ? "saved" : "failed";
     },

@@ -23,7 +23,15 @@ import { createAnkiClient } from "./client";
 export interface AnkiFromSettingsDeps {
   /** Read at runtime, never hardcoded (P8). */
   readonly origin: string;
-  readonly hasHostPermission?: () => Promise<boolean>;
+  /**
+   * Whether the extension may reach **this** endpoint (2.7). Not a constant
+   * from M8: the endpoint is a setting, the manifest declares only the
+   * add-on's default port, and a request to a loopback port the extension
+   * holds no permission for fails in a way indistinguishable from Anki being
+   * closed. `hostPermissionFor` in `src/platform/permissions.ts` is what the
+   * entrypoints pass here.
+   */
+  readonly hasHostPermission?: (endpoint: string) => Promise<boolean>;
   readonly fetch?: typeof globalThis.fetch;
 }
 
@@ -31,6 +39,8 @@ export function ankiConfigFrom(
   settings: Settings,
   deps: AnkiFromSettingsDeps,
 ): AnkiClientConfig {
+  const ask = deps.hasHostPermission;
+
   return {
     endpoint: settings.endpoint,
     timeoutMs: settings.timeoutMs,
@@ -38,9 +48,11 @@ export function ankiConfigFrom(
     // Omitted rather than passed as "": `buildRequest` treats both the same,
     // and an absent field is what `describeAnkiConnection` reports on.
     ...(settings.apiKey === "" ? {} : { apiKey: settings.apiKey }),
-    ...(deps.hasHostPermission === undefined
+    // Bound to the endpoint these settings name, because the adapter's own
+    // config asks the question without one.
+    ...(ask === undefined
       ? {}
-      : { hasHostPermission: deps.hasHostPermission }),
+      : { hasHostPermission: () => ask(settings.endpoint) }),
     ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
   };
 }

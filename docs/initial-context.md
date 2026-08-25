@@ -13,9 +13,11 @@ Written at M2, which created the extension skeleton, extended at M3 with the
 card model and the ports, at M4 with the AnkiConnect adapter behind the first
 of them, at M5 with selection capture — the context menu, the shortcut, and
 the extraction that fills a draft — at M6 with the sidebar editor built on
-all of it, and at M7 with the two joined: the real adapter under the real
-editor, and the draft made durable from the moment it exists. Where a layer
-named below does not exist yet, this file says so.
+all of it, at M7 with the two joined: the real adapter under the real editor,
+and the draft made durable from the moment it exists — and at M8 with
+settings: a versioned, validated store behind the last port, an options page
+over it, and the constants M7 captured with replaced by what the user chose.
+Where a layer named below does not exist yet, this file says so.
 
 ## What the extension is
 
@@ -35,6 +37,7 @@ implementation and an in-memory fake, and tests run against the fake.
 | Result type | `src/core/` | nothing | M2 |
 | Card model, card generation | `src/core/` | nothing | M3 |
 | Capture value (`PageCapture`) | `src/core/capture.ts` | nothing | M5 |
+| Settings schema and its migrations | `src/core/settings*.ts` | the card model, `src/manifest/` | M8 |
 | Ports and their fakes | `src/core/ports/` | the card model | M3 |
 | Typed messaging | `src/messaging/` | ports | M2 |
 | Platform wrappers (ports + adapters) | `src/platform/` | `browser.*` | M2 |
@@ -43,6 +46,7 @@ implementation and an in-memory fake, and tests run against the fake.
 | Page context | `src/content/` | ports, messaging | M2 |
 | Sidebar UI | `src/sidebar/` | ports, messaging | M2 |
 | Sidebar editor: view-model and components | `src/sidebar/` | ports, the card model | M6 |
+| Options page: view-model and form | `src/options/` | ports, the settings schema | M8 |
 | The draft in flight: the two slots and the moves on them | `src/sidebar/session.ts` | ports | M7 |
 | Page extraction | `src/content/extract.dom.ts` | `PageCapture`, a document | M5 |
 | AnkiConnect adapter | `src/anki/` | the card model, `fetch` | M4 |
@@ -70,7 +74,10 @@ so the surface a fake has to cover stays small.
 | `sidebar.ts` | `SidebarPort` | `sidebarAction` **or** `sidePanel` |
 | `scripting.ts` | `ScriptingPort` | `browser.scripting.executeScript` |
 | `commands.ts` | `CommandsPort` | `browser.commands.onCommand` |
+| `options.ts` | `OptionsPort` | `runtime.openOptionsPage` |
 | `draft-store.ts` | `DraftStore` (the M3 port) | `StoragePort` |
+| `settings-store.ts` | `SettingsStore` (the M3 port) | `StoragePort` |
+| `remembered-store.ts` | `RememberedStore` | `StoragePort` |
 
 `createStoredDrafts(storage, key)` is one draft under one key. There are two
 keys — `draft` and `pending-draft` — because one card is edited at a time and
@@ -179,7 +186,10 @@ a pure function returning a new draft.
 | `validate.ts` | `validateDraft` — the issue list |
 | `capture.ts` | `PageCapture`, `CaptureWarning`, and the extraction caps |
 | `generate.ts` | `generateBasicCard`, `generateFromCapture` — selection plus page context to a draft |
-| `ports/` | `AnkiClient`, `DraftStore`, `SettingsStore`, and their fakes |
+| `source-fields.ts` | Where the source URL and title are written into fields, and in what form (M8) |
+| `settings.ts` | `Settings`, its defaults, the read that degrades, and the write that is refused (M8) |
+| `settings-migrations.ts` | The versioned, ordered, idempotent migration runner (M8) |
+| `ports/` | `AnkiClient`, `DraftStore`, `SettingsStore`, `RememberedStore`, and their fakes |
 
 **Fields are keyed by the note type's real field names** (3.1). A positional
 array breaks the moment a note type is edited in Anki.
@@ -285,11 +295,26 @@ nothing edits the waiting slot and so there is nothing in it to lose. The
 capture reports which slot it used, and `describeCapture` carries that
 through.
 
-**Defaults are constants until M8.** `FALLBACK_DEFAULTS` in
-`src/background/capture.ts` is Anki's own `Default` deck and its own `Basic`,
-so a capture is addable without an edit. The note type there is the name
-heuristic's guess (3.7); the sidebar replaces it with Anki's own descriptor
-as soon as it can reach one.
+**Defaults come from the settings, resolved per gesture** (M8).
+`src/background/defaults.ts` reads the `SettingsStore` and the
+`RememberedStore` and hands `captureFromGesture` a `GenerationDefaults`. It is
+resolved per capture rather than held, because the background is unloaded when
+idle and has nowhere to hold it, and because the options page can change it
+between two captures. It is resolved *after* `sidebar.open`, so it cannot cost
+the gesture — a test pins that.
+
+Neither read can fail a capture. A settings read that failed, or a stored value
+this version cannot make sense of, degrades to the shipped defaults (8.2):
+`FALLBACK_DEFAULTS` in `src/background/capture.ts`, which is Anki's own
+`Default` deck and its own `Basic`, so a capture is addable without an edit.
+The note type there is the name heuristic's guess (3.7); the sidebar replaces
+it with Anki's own descriptor as soon as it can reach one.
+
+**The last-used deck beats the configured one** (8.5). The deck a card actually
+went into is more recent evidence of what the user is doing than the deck they
+configured once, so `resolveDefaults` prefers it. It is *remembered* rather
+than configured, which is a distinction with a mechanism: a different storage
+key, a different port, and a settings reset that leaves it alone.
 
 **The sidebar re-reads on every capture, not only on mount.** Firefox's
 sidebar persists per window, so after the first card it is already open when
@@ -353,6 +378,103 @@ operation with two triggers: the card was added, or the user said they meant
 the newer selection. Nothing is destroyed before its replacement is known,
 since the waiting capture is the only copy of itself.
 
+## Settings
+
+M8's subject. `src/core/settings.ts` owns the schema, `settings-migrations.ts`
+owns what runs before it, and `src/platform/settings-store.ts` is the adapter
+that puts them over `storage.local`.
+
+`Settings` carries the default deck, the default note type, the default tags,
+where the source URL and title are written and in what form, the AnkiConnect
+endpoint and timeout, and the add-on's optional API key. `Remembered` carries
+one thing: the deck the last card went into.
+
+**The area is `storage.local`, never `sync`** (8.4). Deck and note-type names
+are machine-specific, and `sync` adds quota and conflict rules for no benefit
+this side of a feature nobody has asked for.
+
+**Settings carry a schema version from the first release** (8.1). Adding
+versioning once users have stored data means guessing what they have. The
+shipped set of migrations reaches v1 and no further; a `v0 → v1` migration
+exists so the runner has been exercised before anything depends on it, and it
+does exactly one thing — stamp the version — because there is no released v0
+*shape* to convert from.
+
+**The runner is versioned, ordered, and idempotent.** Migrations are sorted by
+the version they produce and only those above the stored one run; the runner
+stamps the version afterwards, so no migration author has to remember to. A
+payload written by a **newer** version is left exactly as it is — there is no
+downgrade. Every migration must be a **pure function of its input payload**:
+one that reads today's defaults produces a different answer next year, which
+is a bug that only appears for users who skipped a version.
+
+**Everything is validated on read, and a value that fails degrades** (8.2,
+8.3). Storage is shared mutable state — another version of the extension may
+have written it, and the user may have edited it by hand — so nothing is
+trusted. Each key is validated on its own, and a bad one falls back to its own
+default while the rest still load. A payload that is not an object at all
+yields the defaults whole. The store reports only storage itself refusing,
+because a value it cannot read is a value it has a default for. **Corrupt
+stored data cannot stop a capture**, and that is asserted rather than assumed —
+in `src/background/capture.test.ts` and again end to end in
+`tests/integration/mvp-flow.svelte.test.ts`.
+
+**A key this version does not own is preserved, not deleted.** A newer version
+of the extension may have written it, and replacing the payload wholesale
+would throw the user's choice away silently. Writes are read-modify-write, and
+`reset()` — which is the defaults over this version's keys — preserves them
+too.
+
+**The note type is stored as a descriptor, not a name.** Fields are the
+draft's keys (3.1), so generating a card needs the field list, and the
+background cannot ask Anki for one inside a capture gesture. The options page
+reads note types from Anki and stores what Anki described; M7's reconciliation
+on open heals it when the note type is edited afterwards. `readSettings`
+rebuilds it through `createNoteType` rather than casting it back.
+
+**The source mapping decides whether; the style decides how.** An unmapped
+field is the off switch for writing the URL into a field, and
+`sourceUrlStyle` — `plain` or `link` — is only about its form. Two knobs that
+could each veto the other is a state no user can read off a form.
+`applySourceFields` skips a field the note type does not have, never overwrites
+a field that already has content, and escapes what the `link` style wraps,
+because Anki stores fields as HTML and a page title is page content.
+
+**The API key is stored like any other setting and treated like no other**
+(8.5a, 4.8). It is never logged, never in diagnostics, and never in an error
+payload: `describeAnkiConnection` reports whether one is configured and never
+its value, and the settings form shows it as a password field. It is a
+credential for a service that can delete a collection.
+
+**The adapter is configured from the settings on every call.**
+`src/anki/from-settings.ts` turns a `Settings` into an `AnkiClientConfig` and
+builds an `AnkiClient` per call, so the endpoint, the timeout, and the key the
+options page just changed take effect without reopening the sidebar. Building
+one is closures and one `storage.local` read, in front of an HTTP round trip
+that costs more.
+
+## The options page
+
+`src/options/` is the settings form (M8), built the way M6 built the editor:
+handed the **ports**, one view-model between it and them (6.2), `Resource` for
+every asynchronous read (6.3), and native labelled controls throughout (6.5).
+It reuses M6's `TagEditor` — default tags are tags — and M6's `error-copy`,
+so a failure says the same thing here as it does in the sidebar.
+`settingsIssueCopy` is that module's fourth table, keyed by the union, so a
+validation code added without copy is a type error.
+
+The deck and note-type lists come from Anki, which makes the form a choice
+rather than two text boxes to mistype; when Anki cannot be reached it says so
+and the rest of the form still works. **Saving is stricter than reading**: the
+read path degrades quietly because the alternative is an extension that will
+not start, while this is a user in front of a form who can be told what is
+wrong. Nothing is saved while anything is invalid.
+
+The page is reached from a **Settings** button in the sidebar, through
+`OptionsPort` over `runtime.openOptionsPage()`, and opens in a tab rather than
+the panel Firefox embeds in `about:addons` — that panel is a few hundred pixels
+tall and this form is four groups of controls.
+
 ## Ports
 
 The domain layer talks to interfaces, never to AnkiConnect or `browser.*`
@@ -362,9 +484,17 @@ them arrive later, and each ships an in-memory fake in
 
 | Port | Answers with | Real implementation |
 |------|--------------|---------------------|
-| `AnkiClient` | `Result<…, AnkiError>`, `AnkiConnection`, `AnkiHandshake` | `src/anki/`, M4 |
+| `AnkiClient` | `Result<…, AnkiError>`, `AnkiConnection` | `src/anki/`, M4 |
 | `DraftStore` | `Result<…, DraftStoreError>` | `src/platform/draft-store.ts`, over `StoragePort`, M5 |
-| `SettingsStore` | `Result<…, SettingsStoreError>` | over `StoragePort`, M8 |
+| `SettingsStore` | `Result<…, SettingsStoreError>` | `src/platform/settings-store.ts`, over `StoragePort`, M8 |
+| `RememberedStore` | `Result<…, RememberedStoreError>` | `src/platform/remembered-store.ts`, over `StoragePort`, M8 |
+
+`RememberedStore` is a fourth port rather than three more keys on `Settings`,
+because 8.5 requires what the extension *noticed* to be kept apart from what
+the user *chose* — and "apart" has to be mechanical or it decays into a
+comment. All three stores report the same `StoreError` shape: they fail for
+the same three reasons, and three copies of one interface is three things to
+keep in step.
 
 Every fake can be driven into failure with `failWith(error)`, because each
 consumer has to be able to test its own error path. A fake that only ever
@@ -546,15 +676,23 @@ is the first cloze note type Anki reported — its own reading of the flavour
 (4.6), never a name matched in the UI — and the button is absent when there
 is none, or when the card is already cloze.
 
-**The sidebar entrypoint composes the adapter and both draft slots.**
-`App.svelte` builds `createAnkiClient` over the runtime origin (P8) and the
-host-permission check, and `createStoredDrafts` over `StoragePort` for the
-draft and for the capture waiting behind it. All three are required props on
-`Panel` — a missing one is a `svelte-check` error, so the editor cannot be
-left unmounted or left unable to save. Until the user grants the loopback host
-permission, every AnkiConnect call answers `permission-missing` before
-touching the network, and the editor says so and offers to retry; the fields,
-tags, and cloze controls work regardless, and every edit is still stored.
+**The sidebar entrypoint composes the adapter and every store.**
+`App.svelte` builds `createSettingsAnkiClient` over the runtime origin (P8),
+the host-permission check, and the settings (M8); `createStoredDrafts` over
+`StoragePort` for the draft and for the capture waiting behind it; and
+`createStoredRemembered` for the deck a card goes into. All of them are
+required props on `Panel` — a missing one is a `svelte-check` error, so the
+editor cannot be left unmounted or left unable to save. Until the user grants
+the loopback host permission, every AnkiConnect call answers
+`permission-missing` before touching the network, and the editor says so and
+offers to retry; the fields, tags, and cloze controls work regardless, and
+every edit is still stored.
+
+**The deck a card went into is noted on the add** (8.5), by the panel, through
+`rememberDeck`. On the add rather than on the dropdown change: a deck someone
+scrolled past is not evidence of anything. A failed write there costs the next
+capture its starting deck and nothing else, so it does not join the errors the
+user is asked to act on.
 
 **The panel is keyed on the capture, not on the draft.** It re-reads on every
 storage change, and the editor's own saves are among them; remounting on those
@@ -571,7 +709,7 @@ justification in the subplan that adds it.
 | `activeTab` | Reach the page the user invoked the extension on. |
 | `scripting` | Inject the content script there, on that gesture. |
 | `contextMenus` | The **Create Anki Card** entry (M5). |
-| `storage` | Settings and the draft, since the background is unloaded when idle. |
+| `storage` | Settings, what is remembered, and the draft, since the background is unloaded when idle. |
 | `sidePanel` | Chrome's sidebar. Firefox needs no permission for its own. |
 | `http://127.0.0.1:8765/*` | The local AnkiConnect. The only host contacted. |
 
@@ -584,7 +722,10 @@ install-time host permissions the ceiling does not allow. M5 injects it by
 file path on the gesture, and a test pins that path against the built output.
 
 `commands` — the keyboard shortcut, `Alt+Shift+A` — is a manifest key rather
-than a permission, so it widens nothing.
+than a permission, so it widens nothing. So is `options_ui`, M8's settings
+page: `runtime.openOptionsPage()` needs no permission, and
+`tests/manifest/generated-manifest.test.ts` pins both the page and the fact
+that adding it left the permission set alone.
 
 `src/manifest/manifest.ts` holds the declared set and is pinned by
 `manifest.test.ts`; WXT adds Chrome's `sidePanel` permission itself, from the
@@ -604,4 +745,10 @@ they travel only to loopback. Nothing that carries page content is logged in
 production builds. AnkiConnect's optional `apiKey` is carried on every action
 and appears in no log and no diagnostic: the adapter's
 `describeAnkiConnection()` reports whether one is configured, never its
-value.
+value (8.5a). It is stored in `storage.local` alongside the other settings,
+shown as a password field, and never echoed back by any error copy — a test
+pins each of those.
+
+The endpoint is a setting from M8, and the manifest's host permission is not:
+the extension can only reach `http://127.0.0.1:8765/*` whatever is configured,
+so a mistyped or malicious endpoint cannot make it talk to anything else.

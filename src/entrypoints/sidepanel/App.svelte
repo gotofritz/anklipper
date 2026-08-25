@@ -8,10 +8,7 @@
   } from "@/platform/draft-store";
   import { createOptionsPage } from "@/platform/options";
   import { createOrigin } from "@/platform/origin";
-  import {
-    ANKI_CONNECT_HOST_PERMISSION,
-    createPermissions,
-  } from "@/platform/permissions";
+  import { createPermissions, hostPermissionFor } from "@/platform/permissions";
   import { createStoredRemembered } from "@/platform/remembered-store";
   import { createRuntimeMessaging } from "@/platform/runtime-messaging";
   import {
@@ -53,7 +50,8 @@
   const anki = createSettingsAnkiClient({
     loadSettings: () => loadSettingsOrDefaults(settings),
     origin: createOrigin().extensionOrigin(),
-    hasHostPermission: () => permissions.has(ANKI_CONNECT_HOST_PERMISSION),
+    hasHostPermission: (endpoint) =>
+      permissions.has(hostPermissionFor(endpoint)),
   });
 </script>
 

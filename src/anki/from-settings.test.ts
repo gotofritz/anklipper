@@ -182,6 +182,29 @@ describe("createSettingsAnkiClient", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  // The endpoint is a setting, so the permission is not a constant: a
+  // configured port the extension holds no permission for would otherwise
+  // fail as `anki-not-running` and send the user to start a running Anki.
+  it("asks about the configured endpoint, not a fixed one", async () => {
+    const asked: string[] = [];
+    const client = createSettingsAnkiClient({
+      loadSettings: async () => ({
+        ...DEFAULT_SETTINGS,
+        endpoint: "http://127.0.0.1:9999",
+      }),
+      origin: ORIGIN,
+      hasHostPermission: async (endpoint) => {
+        asked.push(endpoint);
+        return true;
+      },
+      fetch: replying({ result: 6, error: null }),
+    });
+
+    await client.probe();
+
+    expect(asked).toEqual(["http://127.0.0.1:9999"]);
+  });
+
   it("answers every port method through the configured adapter", async () => {
     const fetch = replying({ result: [true], error: null });
     const client = createSettingsAnkiClient({

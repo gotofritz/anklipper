@@ -12,6 +12,30 @@ export const ANKI_CONNECT_URL = "http://127.0.0.1:8765";
 export const ANKI_CONNECT_HOST_PERMISSION = `${ANKI_CONNECT_URL}/*`;
 
 /**
+ * The hosts an endpoint setting may name (M8).
+ *
+ * AnkiConnect's own `webBindAddress` and `webBindPort` are configurable, so
+ * the endpoint has to be too — and a port the manifest does not name is a port
+ * the browser will not let the extension reach. These are **optional** host
+ * permissions: nothing is granted at install on either browser, and the
+ * options page asks for exactly the one the user typed, from the Save gesture.
+ *
+ * Loopback only, and no wider than that. P6 says nothing leaves this machine,
+ * and this is where that stops being a promise and starts being a manifest.
+ * `readSettings` refuses any other host for the same reason, so the setting
+ * and the permission cannot disagree.
+ *
+ * IPv6 is absent because match patterns have no syntax for a literal address;
+ * a setting the permission could not be expressed for would be worse than one
+ * that is refused.
+ */
+export const LOOPBACK_HOSTS = ["127.0.0.1", "localhost"] as const;
+
+export const OPTIONAL_HOST_PERMISSIONS = LOOPBACK_HOSTS.map(
+  (host) => `http://${host}/*`,
+);
+
+/**
  * The MVP permission ceiling, from the plan index. Never `<all_urls>`:
  * `activeTab` plus `scripting` on a user gesture covers the extraction this
  * extension needs. Anything added here needs a justification in the subplan
@@ -68,6 +92,8 @@ export interface GeckoSettings {
 export interface ManifestExtras {
   readonly permissions: string[];
   readonly host_permissions: string[];
+  /** Loopback ports other than the default, asked for when one is configured. */
+  readonly optional_host_permissions: string[];
   /** A manifest key rather than a permission, so it widens nothing. */
   readonly commands: Readonly<Record<string, ManifestCommand>>;
   readonly browser_specific_settings?: GeckoSettings;
@@ -78,6 +104,7 @@ export function manifestExtras(target: string): ManifestExtras {
   return {
     permissions: [...MVP_PERMISSIONS],
     host_permissions: [ANKI_CONNECT_HOST_PERMISSION],
+    optional_host_permissions: [...OPTIONAL_HOST_PERMISSIONS],
     commands: {
       [CAPTURE_COMMAND]: {
         suggested_key: { default: "Alt+Shift+A" },

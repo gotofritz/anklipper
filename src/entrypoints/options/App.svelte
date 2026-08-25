@@ -2,10 +2,7 @@
   import { createSettingsAnkiClient } from "@/anki/from-settings";
   import SettingsForm from "@/options/SettingsForm.svelte";
   import { createOrigin } from "@/platform/origin";
-  import {
-    ANKI_CONNECT_HOST_PERMISSION,
-    createPermissions,
-  } from "@/platform/permissions";
+  import { createPermissions, hostPermissionFor } from "@/platform/permissions";
   import {
     createStoredSettings,
     loadSettingsOrDefaults,
@@ -25,8 +22,18 @@
   const anki = createSettingsAnkiClient({
     loadSettings: () => loadSettingsOrDefaults(settings),
     origin: createOrigin().extensionOrigin(),
-    hasHostPermission: () => permissions.has(ANKI_CONNECT_HOST_PERMISSION),
+    hasHostPermission: (endpoint) =>
+      permissions.has(hostPermissionFor(endpoint)),
   });
 </script>
 
-<SettingsForm {settings} {anki} />
+<!--
+  The permission request is passed rather than made here: it has to happen in
+  the same task as the Save press, and the form is what has the press.
+-->
+<SettingsForm
+  {settings}
+  {anki}
+  requestHostPermission={(endpoint) =>
+    permissions.request(hostPermissionFor(endpoint))}
+/>

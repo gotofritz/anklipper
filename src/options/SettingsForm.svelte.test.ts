@@ -9,7 +9,10 @@ import { BASIC, CLOZE, VOCAB } from "@/fixtures/note-types";
 
 import SettingsForm from "./SettingsForm.svelte";
 
-function renderForm(settings: FakeSettingsStore = createFakeSettingsStore()) {
+function renderForm(
+  settings: FakeSettingsStore = createFakeSettingsStore(),
+  requestHostPermission?: (endpoint: string) => Promise<boolean>,
+) {
   return {
     settings,
     ...render(SettingsForm, {
@@ -18,6 +21,7 @@ function renderForm(settings: FakeSettingsStore = createFakeSettingsStore()) {
         decks: ["Default", "Geography"],
         noteTypes: [BASIC, VOCAB, CLOZE],
       }),
+      ...(requestHostPermission === undefined ? {} : { requestHostPermission }),
     }),
   };
 }
@@ -75,7 +79,9 @@ describe("the settings form", () => {
       screen.getByRole("button", { name: "Save settings" }),
     );
 
-    expect(await screen.findByText(/http address/i)).toBeVisible();
+    expect(
+      await screen.findByText(/never talks to anywhere else/i),
+    ).toBeVisible();
     const stored = await settings.load();
     expect(stored.ok && stored.value.endpoint).toBe(DEFAULT_SETTINGS.endpoint);
   });
@@ -89,7 +95,9 @@ describe("the settings form", () => {
       screen.getByRole("button", { name: "Save settings" }),
     );
 
-    expect(await screen.findByText(/http address/i)).toBeVisible();
+    expect(
+      await screen.findByText(/never talks to anywhere else/i),
+    ).toBeVisible();
     expect(endpoint).toHaveAttribute("aria-invalid", "true");
   });
 
@@ -157,5 +165,40 @@ describe("the settings form", () => {
       "Front",
       "Example",
     ]);
+  });
+});
+
+describe("the permission a configured endpoint needs", () => {
+  it("says so, and keeps the setting, when the browser refuses", async () => {
+    const { settings } = renderForm(
+      createFakeSettingsStore(),
+      async () => false,
+    );
+
+    const endpoint = await screen.findByLabelText("AnkiConnect address");
+    await fireEvent.input(endpoint, {
+      target: { value: "http://127.0.0.1:9999" },
+    });
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Save settings" }),
+    );
+
+    expect(
+      await screen.findByText(/has not given Anklipper access/i),
+    ).toBeVisible();
+    const stored = await settings.load();
+    expect(stored.ok && stored.value.endpoint).toBe("http://127.0.0.1:9999");
+  });
+
+  it("says nothing about a permission that was granted", async () => {
+    renderForm(createFakeSettingsStore(), async () => true);
+
+    await screen.findByLabelText("AnkiConnect address");
+    await fireEvent.click(
+      screen.getByRole("button", { name: "Save settings" }),
+    );
+
+    expect(await screen.findByText("Settings saved.")).toBeVisible();
+    expect(screen.queryByText(/has not given Anklipper access/i)).toBeNull();
   });
 });
