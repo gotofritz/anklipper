@@ -9,6 +9,13 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [0.7.0](https://github.com/gotofritz/anklipper/compare/v0.6.0...v0.7.0) (2026-08-25)
+
+
+### Features
+
+* **m7:** the end-to-end MVP — select, edit, add, confirm ([#19](https://github.com/gotofritz/anklipper/issues/19)) ([b0fcc92](https://github.com/gotofritz/anklipper/commit/b0fcc92c4309fab5d466cc67c50fbd3115c5e286))
+
 ## [0.6.0](https://github.com/gotofritz/anklipper/compare/v0.5.0...v0.6.0) (2026-08-25)
 
 
