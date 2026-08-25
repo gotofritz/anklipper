@@ -3,6 +3,8 @@ import type { CardDraft, GenerationMetadata } from "./draft";
 import { createDraft } from "./draft";
 import type { NoteType } from "./note-type";
 import { primaryFieldOf } from "./note-type";
+import type { FieldMapping, SourceUrlStyle } from "./source-fields";
+import { DEFAULT_FIELD_MAPPING, applySourceFields } from "./source-fields";
 
 /**
  * Deterministic generation (P6): selected text plus page context to a
@@ -26,6 +28,13 @@ export interface GenerationDefaults {
   readonly deck: string;
   readonly noteType: NoteType;
   readonly tags?: readonly string[];
+  /**
+   * Where the source URL and title go, if anywhere (M8). Provenance is kept
+   * on `draft.source` regardless (3.6); this is only about writing it into a
+   * field the user's note type has for it.
+   */
+  readonly fieldMapping?: FieldMapping;
+  readonly sourceUrlStyle?: SourceUrlStyle;
 }
 
 export interface GenerationOptions {
@@ -53,7 +62,7 @@ export function generateBasicCard(
   const primary = primaryFieldOf(defaults.noteType);
   const now = options.now ?? (() => new Date());
 
-  return createDraft({
+  const draft = createDraft({
     deck: defaults.deck,
     noteType: defaults.noteType,
     fields: primary === undefined ? {} : { [primary]: selection.text.trim() },
@@ -69,6 +78,12 @@ export function generateBasicCard(
     createdAt: now().toISOString(),
     generation: BASIC_GENERATOR,
   });
+
+  return applySourceFields(
+    draft,
+    defaults.fieldMapping ?? DEFAULT_FIELD_MAPPING,
+    defaults.sourceUrlStyle ?? "plain",
+  );
 }
 
 /**

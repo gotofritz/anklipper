@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 
+import { resolveDefaults } from "@/background/defaults";
 import { startBackground, CAPTURE_MENU_ITEM } from "@/background/start";
 import type { PageCapture } from "@/core/capture";
 import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
@@ -16,6 +17,10 @@ import {
 } from "@/platform/draft-store";
 import { createFakeRuntimeMessaging } from "@/platform/fakes/fake-runtime-messaging";
 import { ok } from "@/core/result";
+import { DEFAULT_SETTINGS } from "@/core/settings";
+import type { Settings } from "@/core/settings";
+import { createStoredRemembered } from "@/platform/remembered-store";
+import { SETTINGS_KEY, createStoredSettings } from "@/platform/settings-store";
 import { createStorage } from "@/platform/storage";
 import Panel from "@/sidebar/Panel.svelte";
 import { loadDraft, pingBackground } from "@/sidebar/connect";
@@ -61,6 +66,10 @@ function extension(
   const storage = createStorage();
   const drafts = createStoredDrafts(storage);
   const pending = createStoredDrafts(storage, PENDING_KEY);
+  // M8, over the same real `StoragePort` as the drafts: what the user
+  // configured, and what the extension noticed.
+  const settings = createStoredSettings(storage);
+  const remembered = createStoredRemembered(storage);
   const transport = createFakeRuntimeMessaging();
   const messenger = createMessenger(transport);
   const anki =
@@ -106,6 +115,7 @@ function extension(
       sidebar: { open: async () => ok(undefined) },
       drafts,
       pending,
+      defaults: () => resolveDefaults({ settings, remembered }),
       now: () => new Date(Date.UTC(2026, 0, 1, 12, 0, captures)),
     });
   }
@@ -114,6 +124,9 @@ function extension(
     anki,
     drafts,
     pending,
+    settings,
+    remembered,
+    storage,
 
     /** The user selects text and chooses **Create Anki Card**. */
     async capture(selection: PageCapture = SELECTION): Promise<void> {
@@ -140,6 +153,7 @@ function extension(
         anki,
         drafts,
         pending,
+        remembered,
         connect: () => pingBackground(messenger),
         loadDraft: () => loadDraft(messenger),
         subscribe: (onChange: () => void) => watchDraft(storage, onChange),
@@ -384,5 +398,116 @@ describe("8. a background that was unloaded and started again", () => {
     expect(await screen.findByLabelText("Front")).toHaveValue(
       "Paris is the capital of France.",
     );
+  });
+});
+
+/**
+ * M8, end to end: what the user configured reaches a card, what the extension
+ * remembers reaches the next one, and neither can stop a capture.
+ */
+describe("8. settings, remembered state, and a capture", () => {
+  async function configure(
+    app: ReturnType<typeof extension>,
+    settings: Partial<Settings>,
+  ) {
+    const saved = await app.settings.save({ ...DEFAULT_SETTINGS, ...settings });
+    expect(saved.ok).toBe(true);
+  }
+
+  // Test 7 of the M8 plan.
+  it("starts a new card on the configured deck, note type, and tags", async () => {
+    const app = extension();
+    await configure(app, {
+      defaultDeck: "Geography",
+      defaultNoteType: VOCAB,
+      defaultTags: ["reading"],
+    });
+
+    await app.capture();
+    app.openSidebar();
+
+    expect(await screen.findByLabelText("Example")).toBeInTheDocument();
+    await addCard();
+
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+    expect(app.anki.added[0]?.deck).toBe("Geography");
+    expect(app.anki.added[0]?.noteType.name).toBe("Vocab");
+    expect(app.anki.added[0]?.tags).toEqual(["reading"]);
+  });
+
+  // Test 9.
+  it("puts the source URL in the field the settings map it to", async () => {
+    const app = extension();
+    await configure(app, {
+      fieldMapping: { sourceUrl: "Back", sourceTitle: "" },
+    });
+
+    await app.capture();
+    app.openSidebar();
+
+    expect(await screen.findByLabelText("Back")).toHaveValue(
+      "https://example.test/france",
+    );
+  });
+
+  // Test 8. Remembered, not configured: a reset leaves it alone (8.5).
+  it("starts the next card on the deck the last one went into, even after a reset", async () => {
+    const app = extension();
+    await configure(app, { defaultDeck: "Default" });
+
+    await app.capture();
+    const first = app.openSidebar();
+    await screen.findByRole("option", { name: "Geography" });
+    await fireEvent.change(screen.getByLabelText("Deck"), {
+      target: { value: "Geography" },
+    });
+    await type("Back", "Paris");
+    await addCard();
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+    first.unmount();
+
+    const reset = await app.settings.reset();
+    expect(reset.ok).toBe(true);
+
+    await app.capture(SECOND_SELECTION);
+    app.openSidebar();
+
+    expect(await screen.findByLabelText("Front")).toHaveValue(
+      "Berlin is the capital of Germany.",
+    );
+    expect(screen.getByLabelText("Deck")).toHaveValue("Geography");
+  });
+
+  // 8.2, asserted rather than assumed: this is the case that would otherwise
+  // brick the extension for the one user it happened to.
+  it("still captures and adds when the stored settings are unreadable", async () => {
+    const app = extension();
+    await app.storage.set(SETTINGS_KEY, "wiped by something else");
+
+    await app.capture();
+    app.openSidebar();
+
+    expect(await screen.findByLabelText("Front")).toHaveValue(
+      "Paris is the capital of France.",
+    );
+    await type("Back", "Paris");
+    await addCard();
+
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+    expect(app.anki.added[0]?.deck).toBe("Default");
+  });
+
+  // Settings survive a browser restart — which for the background is being
+  // unloaded when idle and started again, and holds nothing in module scope.
+  it("keeps settings across a background restart", async () => {
+    const app = extension();
+    await configure(app, { defaultDeck: "Geography" });
+
+    app.restartBackground();
+    await app.capture();
+    app.openSidebar();
+
+    expect(await screen.findByLabelText("Front")).toBeInTheDocument();
+    expect(screen.getByLabelText("Deck")).toHaveValue("Geography");
   });
 });

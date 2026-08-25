@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import type { ClozeIssueCode } from "@/core/cloze";
 import type { DraftIssueCode } from "@/core/draft";
 import type { AnkiErrorKind, StoreErrorKind } from "@/core/ports/types";
+import type { SettingsIssueCode } from "@/core/settings";
 
 import {
   ankiErrorCopy,
   clozeIssueCopy,
   draftIssueCopy,
   draftStoreErrorCopy,
+  settingsIssueCopy,
 } from "./error-copy";
 
 /**
@@ -174,5 +176,51 @@ describe("what to tell the user about a draft that was not stored", () => {
     expect(
       draftStoreErrorCopy({ kind: "write-failed", message: "quota" }),
     ).toMatch(/add it now|browser/i);
+  });
+});
+
+/**
+ * M8's settings form. The same cause-and-action rule as everything else here:
+ * a field the user cannot save has to say which one and why.
+ */
+describe("what to tell the user about a setting they cannot save", () => {
+  const SETTINGS_CODES: readonly SettingsIssueCode[] = [
+    "deck-missing",
+    "endpoint-invalid",
+    "timeout-invalid",
+    "tag-malformed",
+    "mapping-unknown-field",
+  ];
+
+  it("explains every code the settings validator reports", () => {
+    for (const code of SETTINGS_CODES) {
+      expect(settingsIssueCopy({ code, message: "raw" }), code).not.toBe("");
+    }
+  });
+
+  it("names the field a mapping points at that does not exist", () => {
+    expect(
+      settingsIssueCopy({
+        code: "mapping-unknown-field",
+        message: "raw",
+        field: "Nowhere",
+      }),
+    ).toContain("Nowhere");
+  });
+
+  it("names the tag Anki could not store", () => {
+    expect(
+      settingsIssueCopy({
+        code: "tag-malformed",
+        message: "raw",
+        tag: "two words",
+      }),
+    ).toContain("two words");
+  });
+
+  it("never repeats an API key back, whatever the issue says", () => {
+    expect(
+      settingsIssueCopy({ code: "endpoint-invalid", message: "s3cret" }),
+    ).not.toContain("s3cret");
   });
 });

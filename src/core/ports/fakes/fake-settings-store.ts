@@ -34,5 +34,13 @@ export function createFakeSettingsStore(
       stored = settings;
       return ok(undefined);
     },
+
+    async reset(): Promise<Result<void, SettingsStoreError>> {
+      const refused = refuse<void>();
+      if (refused) return refused;
+
+      stored = DEFAULT_SETTINGS;
+      return ok(undefined);
+    },
   };
 }

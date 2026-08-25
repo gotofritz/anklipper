@@ -6,6 +6,7 @@ import type {
   DraftStoreError,
   StoreErrorKind,
 } from "@/core/ports/types";
+import type { SettingsIssue, SettingsIssueCode } from "@/core/settings";
 
 /**
  * Every sentence the editor says about a failure (6.4).
@@ -140,4 +141,31 @@ const STORE_COPY: Readonly<Record<StoreErrorKind, string>> = {
 
 export function draftStoreErrorCopy(error: DraftStoreError): string {
   return `${STORE_COPY[error.kind]} Add it now, or copy the text somewhere safe.`;
+}
+
+/**
+ * M8's settings form, on the same rule: name the field and say why. The
+ * table is keyed by the union, so a code added to the validator without copy
+ * here is a type error.
+ *
+ * Nothing in here echoes a stored value back. The API key is a setting like
+ * any other and a credential unlike any other (8.5a), and copy that quoted
+ * "what you typed" would be the one place it could leak into a screenshot.
+ */
+const SETTINGS_COPY: Readonly<
+  Record<SettingsIssueCode, (issue: SettingsIssue) => string>
+> = {
+  "deck-missing": () => "Choose the deck new cards start in.",
+  "endpoint-invalid": () =>
+    "AnkiConnect’s address has to be an http address, like http://127.0.0.1:8765.",
+  "timeout-invalid": () =>
+    "How long to wait has to be a number of milliseconds above zero.",
+  "tag-malformed": (issue) =>
+    `Tags cannot contain spaces — “${issue.tag ?? "that tag"}” would be more than one tag in Anki.`,
+  "mapping-unknown-field": (issue) =>
+    `${issue.field ?? "That field"} is not a field on the note type new cards start on. Pick one of its fields, or none.`,
+};
+
+export function settingsIssueCopy(issue: SettingsIssue): string {
+  return SETTINGS_COPY[issue.code](issue);
 }

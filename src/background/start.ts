@@ -25,7 +25,8 @@ export interface BackgroundDeps {
   readonly drafts: DraftStore;
   /** Where a capture waits when a draft is already in flight (7.4). */
   readonly pending: DraftStore;
-  readonly defaults?: GenerationDefaults;
+  /** What a new draft starts from — see `resolveDefaults` (M8). */
+  readonly defaults?: () => GenerationDefaults | Promise<GenerationDefaults>;
   readonly now?: () => Date;
   /**
    * Told what each capture did (5.4). A failed capture stores nothing, so

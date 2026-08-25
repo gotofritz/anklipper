@@ -20,6 +20,7 @@ type Manifest = {
   side_panel?: unknown;
   commands?: Record<string, unknown>;
   content_scripts?: unknown;
+  options_ui?: { page?: string; open_in_tab?: boolean };
 };
 
 const built: Record<string, Manifest> = {};
@@ -94,6 +95,16 @@ describe("generated manifest", () => {
     expect(Object.keys(built[browser]?.commands ?? {})).toEqual([
       "create-anki-card",
     ]);
+  });
+
+  // M8's options page. It needs no permission of its own — which is the
+  // point of asserting it beside the permission set rather than on its own.
+  it.each(["firefox", "chrome"])("gives %s an options page", (browser) => {
+    expect(built[browser]?.options_ui?.page).toBe("options.html");
+  });
+
+  it("opens the options page in a tab, not in a panel a form does not fit", () => {
+    expect(built.firefox?.options_ui?.open_in_tab).toBe(true);
   });
 
   it("gives each browser its own sidebar surface", () => {

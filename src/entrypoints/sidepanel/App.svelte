@@ -1,17 +1,23 @@
 <script lang="ts">
-  import { createAnkiClient } from "@/anki";
+  import { createSettingsAnkiClient } from "@/anki/from-settings";
   import { createMessenger } from "@/messaging/messenger";
   import {
     PENDING_KEY,
     createStoredDrafts,
     watchDraft,
   } from "@/platform/draft-store";
+  import { createOptionsPage } from "@/platform/options";
   import { createOrigin } from "@/platform/origin";
   import {
     ANKI_CONNECT_HOST_PERMISSION,
     createPermissions,
   } from "@/platform/permissions";
+  import { createStoredRemembered } from "@/platform/remembered-store";
   import { createRuntimeMessaging } from "@/platform/runtime-messaging";
+  import {
+    createStoredSettings,
+    loadSettingsOrDefaults,
+  } from "@/platform/settings-store";
   import { createStorage } from "@/platform/storage";
   import Panel from "@/sidebar/Panel.svelte";
   import { loadDraft, pingBackground } from "@/sidebar/connect";
@@ -21,6 +27,7 @@
   const messenger = createMessenger(createRuntimeMessaging());
   const storage = createStorage();
   const permissions = createPermissions();
+  const options = createOptionsPage();
 
   // The two draft slots (7.1, 7.4). The sidebar writes every edit to the
   // first as it is made and hands the slot over when the card is added or the
@@ -31,15 +38,20 @@
   const drafts = createStoredDrafts(storage);
   const pending = createStoredDrafts(storage, PENDING_KEY);
 
-  // The two things the adapter needs from the browser, injected as plain
-  // values so the layer itself stays testable without one (M4). The origin is
-  // read at runtime and never hardcoded (P8): Firefox mints a fresh
-  // `moz-extension://<uuid>` per installation.
-  //
-  // The endpoint is the add-on's own default until M8 makes it a setting; the
-  // deck and note-type defaults a capture starts from are constants in
-  // `@/background/capture` until then.
-  const anki = createAnkiClient({
+  // What the user configured, and what the extension noticed (M8). Kept apart
+  // on purpose: resetting the settings must not erase the deck last used
+  // (8.5).
+  const settings = createStoredSettings(storage);
+  const remembered = createStoredRemembered(storage);
+
+  // The adapter, configured from the settings on every call (M8): the endpoint,
+  // the timeout, and the optional API key are the user's now, and the options
+  // page can change them while this sidebar is open. The origin is read at
+  // runtime and never hardcoded (P8) — Firefox mints a fresh
+  // `moz-extension://<uuid>` per installation — and the host permission is
+  // checked before anything is sent (2.7).
+  const anki = createSettingsAnkiClient({
+    loadSettings: () => loadSettingsOrDefaults(settings),
     origin: createOrigin().extensionOrigin(),
     hasHostPermission: () => permissions.has(ANKI_CONNECT_HOST_PERMISSION),
   });
@@ -49,7 +61,9 @@
   connect={() => pingBackground(messenger)}
   loadDraft={() => loadDraft(messenger)}
   subscribe={(onChange) => watchDraft(storage, onChange)}
+  openSettings={() => void options.open()}
   {anki}
   {drafts}
   {pending}
+  {remembered}
 />
