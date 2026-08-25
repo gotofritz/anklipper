@@ -14,6 +14,7 @@
     "dev": "wxt -b firefox",
     "dev:chrome": "wxt -b chrome",
     "build": "wxt build -b firefox && wxt zip -b firefox",
+    "sign": "pnpm run build && web-ext sign --source-dir .output/firefox-mv3 --artifacts-dir .output --channel unlisted --upload-source-code .output/anklipper-*-sources.zip",
     "build:chrome": "wxt build -b chrome",
     "check": "svelte-check --tsconfig ./tsconfig.json && tsc --noEmit",
     "lint": "eslint .",

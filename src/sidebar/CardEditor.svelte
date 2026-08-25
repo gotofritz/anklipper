@@ -53,6 +53,7 @@
     remembered,
     onAdded,
     onCancel,
+    grantAccess,
   }: {
     anki: AnkiClient;
     draft: CardDraft;
@@ -63,6 +64,15 @@
     /** The card is in Anki (7.3); what happens to the slot is the panel's. */
     onAdded?: (noteId: NoteId) => void | Promise<void>;
     onCancel?: () => void;
+    /**
+     * Ask the browser for the host permission, from this click (9.6). Firefox
+     * MV3 grants none at install, and `permissions.request` is refused outside
+     * a user gesture — so the ask belongs to a button here rather than to
+     * anything the panel could do on the editor's behalf. Answers whether it
+     * was granted. Absent where nothing can ask, which is why the retry
+     * survives below rather than being replaced outright.
+     */
+    grantAccess?: () => Promise<boolean>;
   } = $props();
 
   // Deliberately the values this component was mounted with: the model owns
@@ -144,14 +154,32 @@
           ? "The deck list"
           : "The note type list";
 
-    return { which, ...ankiErrorCopy(failed) };
+    return { which, kind: failed.kind, ...ankiErrorCopy(failed) };
   });
 
   const submitFailure = $derived(
     model.submission.kind === "failed"
-      ? ankiErrorCopy(model.submission.error)
+      ? {
+          kind: model.submission.error.kind,
+          ...ankiErrorCopy(model.submission.error),
+        }
       : undefined,
   );
+
+  /**
+   * 9.7: a refusal the user cannot act on must never be presented as "try
+   * again". A missing host permission is the one cause a press can actually
+   * fix, so it gets its own button and the retry is withheld.
+   */
+  function canAsk(kind: string): boolean {
+    return kind === "permission-missing" && grantAccess !== undefined;
+  }
+
+  async function askThen(retry: () => Promise<unknown>): Promise<void> {
+    // Declined is the user's answer, not an error: the message stands and the
+    // button stays, because they may well press it again.
+    if (await grantAccess?.()) await retry();
+  }
 
   // 7.1's failure. Everything still looks edited and none of it is anywhere,
   // which is the one failure the user cannot see coming.
@@ -375,7 +403,15 @@
     <div class="problem">
       <p>{listFailure.which} could not be read. {listFailure.cause}</p>
       <p>{listFailure.action}</p>
-      <button type="button" onclick={() => void model.load()}>Try again</button>
+      {#if canAsk(listFailure.kind)}
+        <button type="button" onclick={() => void askThen(model.load)}>
+          Allow access to Anki
+        </button>
+      {:else}
+        <button type="button" onclick={() => void model.load()}>
+          Try again
+        </button>
+      {/if}
     </div>
   {/if}
 
@@ -495,9 +531,15 @@
     <div class="problem" role="alert">
       <p>{submitFailure.cause}</p>
       <p>{submitFailure.action}</p>
-      <button type="button" onclick={() => void model.submit()}>
-        Try again
-      </button>
+      {#if canAsk(submitFailure.kind)}
+        <button type="button" onclick={() => void askThen(model.submit)}>
+          Allow access to Anki
+        </button>
+      {:else}
+        <button type="button" onclick={() => void model.submit()}>
+          Try again
+        </button>
+      {/if}
     </div>
   {/if}
 

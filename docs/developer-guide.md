@@ -55,9 +55,31 @@ landing area above the note type and never touched by a note-type change.
 Fields are filled from it by `sendToField`, and the stash is now named rather
 than silent.
 
-Still to come: onboarding for the host permission, and connection diagnostics
-(M9) — which M10 did not wait for, since nothing in it depends on M9's
-onboarding flow.
+The skin came after it, from `docs/archive/13-add-css.md`: one stylesheet
+scoped to `#app`, riding selectors the markup already had, so no component
+`<style>` block changed and no `!important` appears anywhere. Its two
+typefaces are vendored under `public/fonts/` — see *Fonts* — and the two
+places CSS could not reach became real elements rather than `content:`
+strings: the status strip's marker, which now says which of the three
+connection states the panel actually found, and the colophon, which now
+carries the running extension's own version.
+
+That branch also closed the gap that would have met a first-time user.
+Firefox MV3 grants no host permission at install, so a new install shows
+`permission-missing` — and the only button under it was **Try again**, which
+could never have succeeded. It is now **Allow access to Anki**, which asks the
+browser from the click, and the retry is withheld for that one cause (9.7).
+
+**1.0.0 is what this ships as.** See *Releases* for how one is cut and why an
+unsigned build is not a release.
+
+Still open from M9, and deliberately not in 1.0.0: the diagnostics view, and
+the manual fallback screen that names the exact `webCorsOriginList` JSON for a
+user whose AnkiConnect refuses the extension's origin. Neither blocks a
+working install — the error copy in `src/sidebar/error-copy.ts` gives every M4
+cause its own fix — but both are what a user with an unusual AnkiConnect setup
+would want. M11 (media) and M12 (AI generation) are features on top of a
+working extension, not gaps in it.
 
 `docs/initial-context.md` is the authoritative description of that
 architecture. Read it before changing a layer boundary, a message shape, or a
@@ -264,6 +286,75 @@ Plan: https://github.com/gotofritz/anklipper/blob/main/docs/archive/03-card-draf
 ```
 
 `AGENTS.md` has the full rules under *Releases*.
+
+### What a release contains
+
+`pnpm build` produces two archives in `.output/`:
+
+- `anklipper-<version>-firefox.zip` — the extension itself.
+- `anklipper-<version>-sources.zip` — the sources AMO reviewers need,
+  because the shipped code is bundled. `wxt.config.ts` keeps `docs/` and
+  `.claude/` out of it.
+
+`.github/workflows/release.yml` attaches both to the GitHub Release, and —
+when the repository holds AMO credentials — a signed `.xpi` beside them.
+
+### Signing, and why an unsigned build is not a release
+
+Firefox will not install an unsigned add-on permanently. A zip from the
+release page is therefore a build, not something a user can run: loading it
+through `about:debugging` works, but only until the browser restarts, and a
+temporary install draws a **new `moz-extension://` UUID every time** — which
+breaks the user's own AnkiConnect allowlist entry on every restart, for the
+reason `wxt.config.ts` pins a persistent dev profile.
+
+So distribution means signing. Mozilla signs through AMO's API, and
+`web-ext` — already a dev dependency — drives it:
+
+```bash
+pnpm run sign
+```
+
+That builds, zips, and submits the build to AMO on the **unlisted** channel,
+which signs it and hands back a `.xpi` without listing it in the public
+gallery. It needs an API key and secret from
+[addons.mozilla.org/developers/addon/api/key](https://addons.mozilla.org/en-US/developers/addon/api/key/),
+in the environment:
+
+```bash
+export WEB_EXT_API_KEY=user:12345678:123
+export WEB_EXT_API_SECRET=…
+```
+
+Put the same two values in the repository's Actions secrets as
+`AMO_API_KEY` and `AMO_API_SECRET`, and every release signs itself. Without
+them the signing step is skipped rather than failed — the zips still attach,
+and the release simply has no `.xpi`.
+
+Signing depends on the extension identity staying fixed. `GECKO_ID` in
+`src/manifest/manifest.ts` is what AMO keys the add-on to; changing it
+creates a different add-on, and every existing install stops updating.
+
+### Cutting the first stable release
+
+`release-please-config.json` currently carries `"release-as": "1.0.0"`.
+That is a one-release instruction, not a setting: **delete it once 1.0.0 has
+been tagged**, or every subsequent release PR will propose 1.0.0 again.
+`"bump-minor-pre-major": false` beside it is permanent — past 1.0.0 a
+breaking change should bump the major, which is what it turns back on.
+
+### The order of a release
+
+1. Merge the work. CI green on `main`.
+2. release-please opens or updates its release pull request. Read the
+   changelog entry it wrote — it is the pull request titles, and nothing else.
+3. Merge that pull request. It tags, publishes the release, builds, signs if
+   it can, and attaches the archives.
+4. Check the release page has an `.xpi`. If it does not, the credentials are
+   missing — sign locally with `pnpm run sign` and upload the result.
+5. Install that `.xpi` in a clean Firefox profile and add one real card
+   before telling anyone. The README's install instructions are the steps to
+   follow.
 
 ## Testing
 

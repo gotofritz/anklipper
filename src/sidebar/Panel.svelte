@@ -23,6 +23,8 @@
     remembered,
     openSettings,
     onCancel,
+    version,
+    grantAccess,
   }: {
     connect: () => Promise<SidebarStatus>;
     loadDraft: () => Promise<DraftStatus>;
@@ -46,6 +48,19 @@
      */
     openSettings?: () => void;
     onCancel?: () => void;
+    /**
+     * The running extension's version, for the colophon. Read from the
+     * manifest by the entrypoint, because the panel holds no `browser.*`
+     * (P3). Absent in tests that do not care, and in any host that cannot
+     * say — hence a colophon that drops the serial rather than inventing one.
+     */
+    version?: string;
+    /**
+     * Ask the browser for the Anki host permission (9.6). Passed straight
+     * through to the editor, which is where the button that calls it lives —
+     * Firefox refuses a `permissions.request` made outside a user gesture.
+     */
+    grantAccess?: () => Promise<boolean>;
   } = $props();
 
   let status = $state<SidebarStatus>({ kind: "connecting" });
@@ -105,6 +120,20 @@
         : "Connecting…",
   );
 
+  /**
+   * The strip's teletype marker. The skin drew it as a fixed `RT/OK`, which
+   * claimed a connection the panel might not have — and 9.7 wants a check
+   * that has not happened told apart from one that failed, which a single
+   * string cannot do.
+   */
+  const serial = $derived(
+    status.kind === "connected"
+      ? "RT/OK"
+      : status.kind === "unavailable"
+        ? "RT/NO"
+        : "RT/--",
+  );
+
   const draft = $derived(
     capture.kind === "captured" ? capture.draft : undefined,
   );
@@ -156,7 +185,7 @@
       <button type="button" onclick={openSettings}>Settings</button>
     {/if}
   </div>
-  <p role="status">{label}</p>
+  <p role="status">{label}<span class="serial">{serial}</span></p>
 
   {#if slotError !== undefined}
     <p class="problem" role="alert">{slotError}</p>
@@ -201,6 +230,7 @@
         {drafts}
         {remembered}
         {onAdded}
+        {grantAccess}
         onCancel={discard}
       />
     {/key}
@@ -213,6 +243,15 @@
     <p>Select some text on a page, then choose “Create Anki Card”.</p>
   {/if}
 </main>
+
+<!--
+  The colophon. Outside `main` so it is the document's `contentinfo`, and so
+  the skin's full-bleed rule needs no negative margin to escape `main`'s
+  padding.
+-->
+<footer>
+  ANKLIPPER{version === undefined ? "" : `／${version}`} ■ ▲ ● NO IDLE HANDS
+</footer>
 
 <style>
   .top {

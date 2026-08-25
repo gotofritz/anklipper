@@ -11,6 +11,13 @@ import { browser } from "wxt/browser";
 export interface OriginPort {
   /** e.g. `moz-extension://<uuid>` — a bare origin, with no trailing slash. */
   extensionOrigin(): string;
+  /**
+   * The version the build stamped into the manifest, for the colophon.
+   * `undefined` where no manifest can be read — a test harness, or a page
+   * opened outside the extension — because a colophon with no serial is
+   * better than one carrying a number nobody set.
+   */
+  extensionVersion(): string | undefined;
 }
 
 export function createOrigin(): OriginPort {
@@ -19,6 +26,14 @@ export function createOrigin(): OriginPort {
       // `getURL("")` returns the root URL, which carries a trailing slash an
       // `Origin` header never has.
       return browser.runtime.getURL("").replace(/\/$/, "");
+    },
+
+    extensionVersion() {
+      try {
+        return browser.runtime.getManifest().version;
+      } catch {
+        return undefined;
+      }
     },
   };
 }

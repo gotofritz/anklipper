@@ -1,5 +1,48 @@
 # tDR skin — how to land it
 
+## As built
+
+Landed on `feat/design`, not `feat/tdr-skin`. What differed from the plan:
+
+- **§1 the stylesheet** — as written. `tdr.css` sits at
+  `src/entrypoints/sidepanel/tdr.css`, imported from `main.ts`, everything
+  scoped to `#app`. No component `<style>` block was touched and no
+  `!important` was added, as predicted. The `:has()` numbering works: `01`,
+  `02`, `03` come off the ids.
+- **§2 fonts** — the plan named `Archivo-Variable.woff2` "from the Archivo
+  repo". Google publishes no `.woff2` for it: the download is
+  `Archivo-VariableFont_wdth,wght.ttf`, the same font in a different
+  container. It is converted with `fonttools` and vendored, keeping both axes
+  (`wght` 100–900, `wdth` 62–125). The Plex files are WOFF2 upstream and were
+  taken unsubsetted. `tests/assets/font-assets.test.ts` pins all three
+  references to real files, because a missing font here is silent — no failing
+  request, just `font-display: swap` settling on Helvetica. Provenance and the
+  conversion recipe are in the developer guide under *Fonts*.
+- **§3 markup amends** — the plan called all three optional. **a** was already
+  satisfied. **b** and **c** were done rather than skipped, because both
+  pseudo-elements were asserting things that were not true: `RT/OK` claimed a
+  connection whatever the panel had found, and `ANKLIPPER／0010` carried a
+  serial nobody had ever set. Both are real elements now — a `.serial` span
+  driven by `SidebarStatus` (`RT/OK`, `RT/NO`, `RT/--`, which is also M9's
+  "unchecked told apart from failed"), and a `<footer>` carrying the version
+  read from the manifest through `OriginPort.extensionVersion()`. The footer
+  sits outside `main`, so it is the document's `contentinfo` and needs no
+  negative margin to escape `main`'s padding.
+- **§4 test fallout** — none. All 949 tests passed untouched, including the
+  two the plan flagged.
+- **§5 design reference** — `Anklipper Sidebar.dc.html` is not in the
+  repository, so the comparison was made against a render of the real panel
+  instead: the built `Panel` mounted on the port fakes, driven in Chromium.
+  That render is `docs/images/sidebar.png`, and it is what the README shows.
+
+Two things landed on the same branch that the plan did not ask for, because
+the render made them visible: the sidebar had no way to grant the Anki host
+permission (a **Try again** button on a cause no retry can fix), and the
+repository still described itself as not ready to install. Both are covered
+in the developer guide.
+
+## Original plan
+
 Branch suggestion: `feat/tdr-skin`
 
 ## 1. The stylesheet

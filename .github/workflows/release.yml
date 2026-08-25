@@ -32,6 +32,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # Read at the job level so the signing step can test them: the `secrets`
+      # context is awkward in a step `if`, and `env` is not.
+      WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY }}
+      WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -41,8 +46,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # Firefox refuses to install an unsigned add-on permanently, so the zip
+      # alone is a build, not a release anyone can use. Signing is skipped
+      # rather than failed when no AMO credentials are configured — the zips
+      # still attach, and the developer guide says how to sign by hand.
+      - name: Sign for distribution
+        if: env.WEB_EXT_API_KEY != ''
+        run: >-
+          pnpm exec web-ext sign
+          --source-dir .output/firefox-mv3
+          --artifacts-dir .output
+          --channel unlisted
+          --upload-source-code .output/anklipper-*-sources.zip
       - name: Attach build to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-please.outputs.tag }}
-        run: gh release upload "$TAG" .output/*.zip --clobber
+        run: |
+          shopt -s nullglob
+          gh release upload "$TAG" .output/*.zip .output/*.xpi --clobber

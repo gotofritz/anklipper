@@ -190,8 +190,9 @@ body {
   }
 }
 
-#app main > p[role="status"]::after {
-  content: "RT/OK";
+/* Panel.svelte renders the marker; it used to be a fixed `content: "RT/OK"`
+   here, which claimed a connection the panel had not made. */
+#app main > p[role="status"] .serial {
   float: right;
   opacity: 0.55;
 }
@@ -719,10 +720,11 @@ body {
   );
 }
 
-#app main::after {
-  content: "ANKLIPPER／0010 ■ ▲ ● NO IDLE HANDS";
+/* The colophon is a real `<footer>` now, carrying the real version — it was
+   a `content:` string here with a made-up serial in it. Outside `main`, so
+   it needs no negative margin to escape that padding. */
+#app footer {
   display: block;
-  margin: 0 -10px;
   padding: 6px 10px;
   background: var(--ink);
   border-top: 6px solid var(--ink);

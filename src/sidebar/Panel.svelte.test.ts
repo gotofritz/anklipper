@@ -129,6 +129,65 @@ describe("sidebar panel", () => {
   });
 });
 
+// The skin puts a teletype marker at the right of the status strip. It was a
+// fixed `::after` string reading `RT/OK`, which said "connected" whatever the
+// panel had actually found — so it is the real state or it is nothing.
+describe("the status marker", () => {
+  it("reads as unchecked while the background has not answered", () => {
+    renderPanel({ connect: never, loadDraft: noDraft, subscribe: noChanges });
+
+    expect(screen.getByRole("status")).toHaveTextContent("RT/--");
+  });
+
+  it("reads as connected once a context has answered", async () => {
+    renderPanel({
+      connect: async () => ({ kind: "connected", from: "background" }),
+      loadDraft: noDraft,
+      subscribe: noChanges,
+    });
+
+    expect(await screen.findByRole("status")).toHaveTextContent("RT/OK");
+  });
+
+  it("distinguishes a failed check from an unmade one", async () => {
+    renderPanel({
+      connect: async () => ({ kind: "unavailable", reason: "no-receiver" }),
+      loadDraft: noDraft,
+      subscribe: noChanges,
+    });
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("RT/NO");
+    expect(status).not.toHaveTextContent("RT/--");
+  });
+});
+
+// The colophon was a hardcoded `content:` string carrying a made-up serial
+// (`ANKLIPPER／0010`). A version nobody can trust is worse than none, so it
+// now renders the running extension's own.
+describe("the colophon", () => {
+  it("carries the version it was given", () => {
+    renderPanel({
+      connect: never,
+      loadDraft: noDraft,
+      subscribe: noChanges,
+      version: "1.2.3",
+    });
+
+    expect(screen.getByRole("contentinfo")).toHaveTextContent(
+      "ANKLIPPER／1.2.3",
+    );
+  });
+
+  it("names the extension without a serial when the version is unknown", () => {
+    renderPanel({ connect: never, loadDraft: noDraft, subscribe: noChanges });
+
+    const colophon = screen.getByRole("contentinfo");
+    expect(colophon).toHaveTextContent("ANKLIPPER");
+    expect(colophon).not.toHaveTextContent("／");
+  });
+});
+
 describe("the captured draft", () => {
   it("says nothing has been captured yet", async () => {
     renderPanel({
@@ -493,6 +552,37 @@ describe("re-reading while the user is editing", () => {
 });
 
 /** M8. Settings are reachable from the panel, and the deck used is noted. */
+// The ask has to be made from a click, and the click is on a button inside
+// the editor — so the panel's job is to carry the capability down to it.
+describe("granting the Anki host permission", () => {
+  it("hands the editor a way to ask for it", async () => {
+    const failing = createFakeAnkiClient({
+      decks: ["Geography"],
+      noteTypes: [BASIC],
+    });
+    failing.failWith({
+      kind: "permission-missing",
+      message: "no host permission for http://127.0.0.1:8765",
+    });
+
+    renderPanel({
+      connect: async () => ({ kind: "connected", from: "background" }),
+      loadDraft: async () => ({
+        kind: "captured",
+        draft: draftWith(),
+        pending: undefined,
+      }),
+      subscribe: noChanges,
+      anki: failing,
+      grantAccess: async () => true,
+    });
+
+    expect(
+      await screen.findByRole("button", { name: /allow access to anki/i }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("settings, from the panel", () => {
   it("offers a way into the settings", async () => {
     const openSettings = vi.fn();
