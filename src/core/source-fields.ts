@@ -1,4 +1,5 @@
 import type { CardDraft } from "./draft";
+import { escapeFieldHtml, isFieldEmpty } from "./field-html";
 import { hasField } from "./note-type";
 
 /**
@@ -37,23 +38,17 @@ export const DEFAULT_FIELD_MAPPING: FieldMapping = {
 };
 
 /**
- * Anki stores fields as HTML, so the one style that emits markup has to escape
- * what it wraps. A page title is page content and may contain anything.
+ * Anki stores fields as HTML (10.2), so everything written into one is escaped
+ * — the plain style as much as the link style. A page title and a URL are both
+ * page content and may contain anything.
  */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 function urlText(draft: CardDraft, style: SourceUrlStyle): string {
-  if (style === "plain") return draft.source.url;
+  const url = escapeFieldHtml(draft.source.url);
+  if (style === "plain") return url;
 
   const label =
     draft.source.title.trim() === "" ? draft.source.url : draft.source.title;
-  return `<a href="${escapeHtml(draft.source.url)}">${escapeHtml(label)}</a>`;
+  return `<a href="${url}">${escapeFieldHtml(label)}</a>`;
 }
 
 /**
@@ -77,19 +72,21 @@ export function applySourceFields(
   const put = (field: string, value: string) => {
     if (field === "" || value === "") return;
     if (!hasField(draft.noteType, field)) return;
-    if ((draft.fields[field] ?? "").trim() !== "") return;
+    if (!isFieldEmpty(draft.fields[field] ?? "")) return;
 
     parts.set(field, [...(parts.get(field) ?? []), value]);
   };
 
   // Title first: it reads as a caption above the address it belongs to.
-  put(mapping.sourceTitle, draft.source.title);
+  put(mapping.sourceTitle, escapeFieldHtml(draft.source.title));
   put(mapping.sourceUrl, urlText(draft, style));
 
   if (parts.size === 0) return draft;
 
   const fields = { ...draft.fields };
-  for (const [field, values] of parts) fields[field] = values.join("\n");
+  // `<br>`, not a newline: the field is HTML, and a newline in one renders as
+  // a space.
+  for (const [field, values] of parts) fields[field] = values.join("<br>");
 
   return { ...draft, fields };
 }

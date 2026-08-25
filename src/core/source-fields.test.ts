@@ -41,7 +41,20 @@ describe("applySourceFields", () => {
       "plain",
     );
 
-    expect(mapped.fields.Back).toBe(SOURCE.url);
+    // Escaped, because a field is HTML (10.2) and a bare `&` in one is an
+    // entity the renderer has to guess at.
+    expect(mapped.fields.Back).toBe("https://example.test/a?b=1&amp;c=2");
+  });
+
+  it("escapes a title that would otherwise be markup", () => {
+    const draft = draftOn();
+    const mapped = applySourceFields(
+      { ...draft, source: { ...draft.source, title: "a <b>bold</b> page" } },
+      { sourceUrl: "", sourceTitle: "Back" },
+      "plain",
+    );
+
+    expect(mapped.fields.Back).toBe("a &lt;b&gt;bold&lt;/b&gt; page");
   });
 
   it("puts the source title in the configured field", () => {
@@ -128,6 +141,8 @@ describe("applySourceFields", () => {
       "plain",
     );
 
-    expect(mapped.fields.Back).toBe(`${SOURCE.title}\n${SOURCE.url}`);
+    expect(mapped.fields.Back).toBe(
+      `${SOURCE.title}<br>https://example.test/a?b=1&amp;c=2`,
+    );
   });
 });

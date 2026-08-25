@@ -373,6 +373,58 @@ describe("decks and note types", () => {
 
     expect(isErr(noteTypes) && noteTypes.error.kind).toBe("malformed-response");
   });
+
+  // 10.1: the collection's own order, and nothing on the way through may sort
+  // it. A note type whose fields read alphabetically by accident would prove
+  // nothing, so this one is deliberately out of order.
+  it("keeps the field order the collection reports", async () => {
+    const { client } = clientWith((body) => {
+      if (body.action === "modelNames") return ok(["Recipe"]);
+      if (body.action === "modelFieldNames") {
+        return ok(["Title", "Ingredients", "Method", "Applies to"]);
+      }
+      return ok({ "Card 1": { Front: "{{Title}}", Back: "{{Method}}" } });
+    });
+
+    const noteTypes = await client.noteTypes();
+
+    expect(isOk(noteTypes) && noteTypes.value[0]?.fields).toEqual([
+      "Title",
+      "Ingredients",
+      "Method",
+      "Applies to",
+    ]);
+  });
+});
+
+describe("the collection's existing tags (10.9)", () => {
+  it("reads them", async () => {
+    const { client, sent } = clientWith(() => ok(["europe", "geo::capitals"]));
+
+    expect(await client.tags()).toEqual({
+      ok: true,
+      value: ["europe", "geo::capitals"],
+    });
+    expect(sent[0]?.action).toBe("getTags");
+  });
+
+  it("validates the reply rather than casting it (9)", async () => {
+    const { client } = clientWith(() => ok(["europe", 7]));
+
+    const tags = await client.tags();
+
+    expect(isErr(tags) && tags.error.kind).toBe("malformed-response");
+  });
+
+  // Completion is a convenience; a collection that will not report its tags
+  // must not stop a card being made, so the cause travels rather than throwing.
+  it("reports why it could not read them", async () => {
+    const { client } = clientWith(() => new Error("connection refused"));
+
+    const tags = await client.tags();
+
+    expect(isErr(tags) && tags.error.kind).toBe("anki-not-running");
+  });
 });
 
 describe("duplicate detection (4.4)", () => {

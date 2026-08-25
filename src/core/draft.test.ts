@@ -276,6 +276,19 @@ describe("convertFromCloze", () => {
     }
   });
 
+  it("keeps the formatting when it strips the markup", () => {
+    const cloze = draft({
+      noteType: CLOZE,
+      fields: { Text: "{{c1::<b>Paris</b>}} is the capital." },
+    });
+    const result = convertFromCloze(cloze, BASIC);
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.fields.Front).toBe("<b>Paris</b> is the capital.");
+    }
+  });
+
   it("refuses to convert a draft that is not cloze", () => {
     const result = convertFromCloze(draft(), VOCAB);
 
@@ -289,6 +302,30 @@ describe("convertFromCloze", () => {
 
     expect(isErr(result)).toBe(true);
     if (isErr(result)) expect(result.error.code).toBe("note-type-not-standard");
+  });
+});
+
+describe("fields that hold markup (10.2)", () => {
+  // A field a user has emptied still looks like markup — `<br>` is what a
+  // `contenteditable` leaves behind — and the stash exists for content the
+  // user still has, not for content they threw away.
+  it("clearing a field to bare markup still clears its stash", () => {
+    const stashed = setNoteType(
+      setNoteType(unwrap(setField(draft(), "Back", "Paris")), VOCAB),
+      BASIC,
+    );
+    expect(stashed.fields.Back).toBe("Paris");
+
+    const cleared = unwrap(setField(stashed, "Back", "<br>"));
+    expect(setNoteType(setNoteType(cleared, VOCAB), BASIC).fields.Back).toBe(
+      "",
+    );
+  });
+
+  it("does not stash a field holding nothing but markup", () => {
+    const blank = unwrap(setField(draft(), "Back", "<br>"));
+
+    expect(setNoteType(blank, VOCAB).stash).toEqual({});
   });
 });
 

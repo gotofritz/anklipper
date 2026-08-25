@@ -7,7 +7,7 @@ import type { PageCapture } from "@/core/capture";
 import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
 import type { AnkiError } from "@/core/ports/types";
 import { startContent } from "@/content/start";
-import { BASIC, CLOZE, VOCAB } from "@/fixtures/note-types";
+import { BASIC, CLOZE, RECIPE, VOCAB } from "@/fixtures/note-types";
 import { createMessenger } from "@/messaging/messenger";
 import type { ContextMenuClick } from "@/platform/context-menus";
 import {
@@ -172,15 +172,49 @@ async function addCard() {
   await fireEvent.click(screen.getByRole("button", { name: /add card/i }));
 }
 
-async function type(label: string, value: string) {
-  await fireEvent.input(screen.getByLabelText(label), { target: { value } });
+/**
+ * A field is a `contenteditable` from M10 (10.2): reached by its role, and
+ * read by what it holds rather than by a form control's value.
+ */
+function fieldOf(name: string): HTMLElement {
+  return screen.getByRole("textbox", { name });
 }
 
-/** Mark a range in a textarea the way a user's selection would. */
-async function mark(label: string, text: string) {
-  const field = screen.getByLabelText(label) as HTMLTextAreaElement;
-  const at = field.value.indexOf(text);
-  field.setSelectionRange(at, at + text.length);
+function findField(name: string): Promise<HTMLElement> {
+  return screen.findByRole("textbox", { name });
+}
+
+async function type(name: string, html: string) {
+  const node = fieldOf(name);
+  node.innerHTML = html;
+  await fireEvent.input(node);
+}
+
+/** Select a run of a field's text the way a user's drag would. */
+async function select(name: string, text: string) {
+  const node = fieldOf(name);
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  let holder = walker.nextNode();
+  while (holder !== null && (holder as Text).data.indexOf(text) === -1) {
+    holder = walker.nextNode();
+  }
+  if (holder === null) throw new Error(`no text node holds ${text}`);
+
+  const at = (holder as Text).data.indexOf(text);
+  const range = document.createRange();
+  range.setStart(holder, at);
+  range.setEnd(holder, at + text.length);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+
+  // The editor caches what a field reports rather than asking for it after a
+  // toolbar button has taken the focus, so the selection has to be announced.
+  await fireEvent.keyUp(node);
+}
+
+async function mark(name: string, text: string) {
+  await select(name, text);
   await fireEvent.click(
     screen.getByRole("button", { name: /mark selection/i }),
   );
@@ -192,7 +226,7 @@ describe("1. selection to a card in Anki", () => {
     await app.capture();
     app.openSidebar();
 
-    expect(await screen.findByLabelText("Front")).toHaveValue(
+    expect(await findField("Front")).toHaveTextContent(
       "Paris is the capital of France.",
     );
     await screen.findByRole("option", { name: "Geography" });
@@ -221,7 +255,7 @@ describe("1a. the same flow for a cloze card", () => {
     await fireEvent.click(
       screen.getByRole("button", { name: /convert to cloze/i }),
     );
-    await screen.findByLabelText("Text");
+    await findField("Text");
     await mark("Text", "Paris");
     await mark("Text", "France");
     await addCard();
@@ -266,7 +300,7 @@ describe("3 to 4. an add that fails, and the retry that follows", () => {
     expect(await screen.findByText(/anki is not running/i)).toBeInTheDocument();
 
     // 7.2: nothing to re-enter, and the draft is still where it was.
-    expect(screen.getByLabelText("Back")).toHaveValue("Paris");
+    expect(fieldOf("Back")).toHaveTextContent("Paris");
     await vi.waitFor(async () => {
       const stored = await app.drafts.load();
       expect(stored.ok && stored.value?.fields["Back"]).toBe("Paris");
@@ -301,8 +335,8 @@ describe("5. reopening the sidebar", () => {
     open.unmount();
     app.openSidebar();
 
-    expect(await screen.findByLabelText("Back")).toHaveValue("Paris");
-    expect(screen.getByLabelText("Front")).toHaveValue(
+    expect(await findField("Back")).toHaveTextContent("Paris");
+    expect(fieldOf("Front")).toHaveTextContent(
       "Paris is the capital of France.",
     );
   });
@@ -348,10 +382,10 @@ describe("7. a second selection while the first is being edited", () => {
       const waiting = await app.pending.load();
       expect(waiting.ok && waiting.value).toBeUndefined();
     });
-    expect(screen.getByLabelText("Front")).toHaveValue(
+    expect(fieldOf("Front")).toHaveTextContent(
       "Paris is the capital of France.",
     );
-    expect(screen.getByLabelText("Back")).toHaveValue("Paris");
+    expect(fieldOf("Back")).toHaveTextContent("Paris");
   });
 
   it("opens the newer one when that is what the user meant", async () => {
@@ -372,13 +406,13 @@ describe("7. a second selection while the first is being edited", () => {
     );
 
     await vi.waitFor(() =>
-      expect(screen.getByLabelText("Front")).toHaveValue(
+      expect(fieldOf("Front")).toHaveTextContent(
         "Berlin is the capital of Germany.",
       ),
     );
     const stored = await app.drafts.load();
     expect(stored.ok && stored.value?.source.title).toBe("Germany — Example");
-    expect(screen.getByLabelText("Back")).toHaveValue("");
+    expect(fieldOf("Back").textContent).toBe("");
   });
 });
 
@@ -395,7 +429,7 @@ describe("8. a background that was unloaded and started again", () => {
     app.restartBackground();
     app.openSidebar();
 
-    expect(await screen.findByLabelText("Front")).toHaveValue(
+    expect(await findField("Front")).toHaveTextContent(
       "Paris is the capital of France.",
     );
   });
@@ -445,7 +479,7 @@ describe("8. settings, remembered state, and a capture", () => {
     await app.capture();
     app.openSidebar();
 
-    expect(await screen.findByLabelText("Back")).toHaveValue(
+    expect(await findField("Back")).toHaveTextContent(
       "https://example.test/france",
     );
   });
@@ -472,7 +506,7 @@ describe("8. settings, remembered state, and a capture", () => {
     await app.capture(SECOND_SELECTION);
     app.openSidebar();
 
-    expect(await screen.findByLabelText("Front")).toHaveValue(
+    expect(await findField("Front")).toHaveTextContent(
       "Berlin is the capital of Germany.",
     );
     expect(screen.getByLabelText("Deck")).toHaveValue("Geography");
@@ -487,7 +521,7 @@ describe("8. settings, remembered state, and a capture", () => {
     await app.capture();
     app.openSidebar();
 
-    expect(await screen.findByLabelText("Front")).toHaveValue(
+    expect(await findField("Front")).toHaveTextContent(
       "Paris is the capital of France.",
     );
     await type("Back", "Paris");
@@ -507,7 +541,144 @@ describe("8. settings, remembered state, and a capture", () => {
     await app.capture();
     app.openSidebar();
 
-    expect(await screen.findByLabelText("Front")).toBeInTheDocument();
+    expect(await findField("Front")).toBeInTheDocument();
     expect(screen.getByLabelText("Deck")).toHaveValue("Geography");
+  });
+});
+
+/**
+ * M10, end to end: the milestone's done-when is a real note type — not the
+ * built-in Basic — rendering and submitting correctly, and a card that is
+ * indistinguishable in Anki from one typed into Anki's own editor.
+ */
+describe("9. the editor at Anki's own shape", () => {
+  function withRecipe() {
+    return extension({
+      anki: createFakeAnkiClient({
+        decks: ["Default", "Geography"],
+        noteTypes: [BASIC, RECIPE, CLOZE],
+        tags: ["cooking", "geo::capitals"],
+      }),
+    });
+  }
+
+  async function chooseRecipe() {
+    await screen.findByRole("option", { name: "Recipe" });
+    await fireEvent.change(screen.getByLabelText(/^note type$/i), {
+      target: { value: "Recipe" },
+    });
+    await findField("Ingredients");
+  }
+
+  // 10.1: the collection's order, which is not the alphabetical one.
+  it("renders a real note type's fields in the collection's own order", async () => {
+    const app = withRecipe();
+    await app.capture();
+    app.openSidebar();
+    await chooseRecipe();
+
+    expect(
+      screen
+        .getAllByRole("textbox")
+        .map((one) => one.getAttribute("aria-label")),
+    ).toEqual(["Title", "Ingredients", "Method", "Applies to"]);
+  });
+
+  it("submits every field of it", async () => {
+    const app = withRecipe();
+    await app.capture();
+    app.openSidebar();
+    await chooseRecipe();
+
+    await type("Title", "Bouillabaisse");
+    await type("Ingredients", "Fish<br>Saffron");
+    await type("Method", "Simmer.");
+    await type("Applies to", "Marseille");
+    await addCard();
+
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+    expect(app.anki.added[0]?.fields).toEqual({
+      Title: "Bouillabaisse",
+      Ingredients: "Fish<br>Saffron",
+      Method: "Simmer.",
+      "Applies to": "Marseille",
+    });
+  });
+
+  // 10.2: what reaches Anki is the markup Anki's own editor would have
+  // written, which is the whole point of the rich field.
+  it("sends the formatting the user applied", async () => {
+    const app = withRecipe();
+    await app.capture();
+    app.openSidebar();
+    await screen.findByRole("option", { name: "Geography" });
+
+    await select("Front", "Paris");
+    await fireEvent.click(screen.getByRole("button", { name: /^bold/i }));
+    await type("Back", "Paris");
+    await addCard();
+
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+    expect(app.anki.added[0]?.fields["Front"]).toBe(
+      "<b>Paris</b> is the capital of France.",
+    );
+  });
+
+  // 10.9: the collection's own tags, offered for completion.
+  it("offers the tags the collection already holds", async () => {
+    const app = withRecipe();
+    await app.capture();
+    app.openSidebar();
+    await screen.findByRole("option", { name: "Geography" });
+
+    expect(
+      await screen.findByRole("option", {
+        name: "geo::capitals",
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  // 10.6, the milestone's test 6, across two captures and the store between
+  // them: this is what makes several cards off one page fast.
+  it("carries a pinned field to the next card, and an unpinned one not at all", async () => {
+    const app = withRecipe();
+    await app.capture();
+    const first = app.openSidebar();
+    await screen.findByRole("option", { name: "Geography" });
+
+    await type("Back", "Source: example.test");
+    await fireEvent.click(screen.getByRole("button", { name: /pin back/i }));
+    await addCard();
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+    first.unmount();
+
+    await app.capture(SECOND_SELECTION);
+    app.openSidebar();
+
+    expect(await findField("Front")).toHaveTextContent(
+      "Berlin is the capital of Germany.",
+    );
+    await vi.waitFor(() =>
+      expect(fieldOf("Back")).toHaveTextContent("Source: example.test"),
+    );
+  });
+
+  it("carries nothing when the field was never pinned", async () => {
+    const app = withRecipe();
+    await app.capture();
+    const first = app.openSidebar();
+    await screen.findByRole("option", { name: "Geography" });
+
+    await type("Back", "Source: example.test");
+    await addCard();
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+    first.unmount();
+
+    await app.capture(SECOND_SELECTION);
+    app.openSidebar();
+
+    await findField("Front");
+    expect(fieldOf("Back").textContent).toBe("");
   });
 });

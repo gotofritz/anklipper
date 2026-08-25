@@ -1,5 +1,57 @@
 # M10 — Card editor parity
 
+## As built
+
+Shipped as planned, with six things worth recording.
+
+**It landed before M9.** The plan says "Depends on: M9", and nothing in it
+turned out to: M9 is onboarding and diagnostics over M4's error taxonomy, and
+this milestone touches neither. The dependency was ordering, not coupling.
+M9 is still open and unchanged.
+
+**The `contenteditable` risk was answered by not trusting the browser.** The
+plan's fallback was 10.4's source toggle, to be decided "on evidence". No
+fallback was needed, because no browser editing command is used at all: a
+field's HTML is parsed into runs of text carrying inline marks, every action —
+bold, clear, paste, cloze — is a pure function over those runs, and the
+component only renders what comes back. That put the mapping the plan warned
+about in `src/core/field-html.ts`, where concatenating the runs' text *is* the
+offsets `cloze.ts` works in, so `src/sidebar/selection.dom.ts` only has to
+measure the DOM the same way. Both have tests of their own, and the parity the
+plan asked for in test 7 is asserted as an equivalence over a table of cases
+rather than as a pair of examples.
+
+**Sanitising rebuilds rather than filters.** 10.5 asked for an allowlist; what
+is implemented re-emits everything from the parsed model with the text escaped
+and no attributes at all, so nothing reaches a collection that
+`serializeField` did not write. The hostile fixture the done-when asked for is
+`src/core/field-html.test.ts`.
+
+**Making fields HTML reached further than the editor.** Three things outside
+it had to change so that a page's text cannot become a collection's markup:
+`generate.ts` escapes the captured selection, `source-fields.ts` escapes the
+page title and URL in the plain style as well as the link style (and joins
+with `<br>` rather than a newline, which a field renders as a space), and
+`validate.ts` reads "empty" off a field's *text*, since a `contenteditable`
+the user emptied is left holding a `<br>`.
+
+**10.7 has one deliberate omission.** Anki clears formatting with `Ctrl+R`,
+which is the browser's reload. The plan's rule is to match Anki "where they do
+not collide with the browser's", so that chord is not claimed and remove-
+formatting is reachable only from its toolbar button — which still satisfies
+test 11, since a button is reachable by keyboard. `Ctrl+B` and `Ctrl+U` *are*
+claimed from the browser, because an editor without bold or underline is not
+one.
+
+**Two smaller additions the deliverables implied.** `AnkiClient` grew
+`tags()` over AnkiConnect's `getTags` for 10.9's completion, and `Remembered`
+grew `sticky` for 10.6's pins — which made every write to that one storage key
+go through `updateRemembered`, since the deck (8.5) and the pins now share it
+and a whole-value write would drop whichever half the other caller had just
+made.
+
+---
+
 Index: `00-plan.md`. Depends on: M9. Blocks: M12.
 
 ## Goal

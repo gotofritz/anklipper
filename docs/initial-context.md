@@ -183,6 +183,9 @@ a pure function returning a new draft.
 | `note-type.ts` | `NoteType`: name, field names in Anki's order, `kind`, required fields |
 | `draft.ts` | `CardDraft`, `DraftIssue`, and every transition |
 | `cloze.ts` | The `{{cN::…}}` parser and the string transforms over it |
+| `field-html.ts` | What a field's HTML may contain, and the runs it parses into (M10) |
+| `field-cloze.ts` | Cloze markup against a field that holds HTML (M10) |
+| `sticky.ts` | Which fields are pinned, and what they carry to the next card (M10) |
 | `validate.ts` | `validateDraft` — the issue list |
 | `capture.ts` | `PageCapture`, `CaptureWarning`, and the extraction caps |
 | `generate.ts` | `generateBasicCard`, `generateFromCapture` — selection plus page context to a draft |
@@ -193,6 +196,35 @@ a pure function returning a new draft.
 
 **Fields are keyed by the note type's real field names** (3.1). A positional
 array breaks the moment a note type is edited in Anki.
+
+**Fields hold HTML** (10.2), because Anki's own fields do. `field-html.ts` is
+the only module that decides what that HTML may be, and it decides by
+*rebuilding* rather than filtering: markup is parsed into runs of text
+carrying inline marks — `b`, `i`, `u`, `sub`, `sup`, and a `<br>` read as a
+newline — and serialised back with the text escaped, the tags emitted from
+that allowlist in one canonical order, and **no attributes at all** (10.5).
+Nothing survives the round trip that this module did not write, which is what
+keeps a page's script, handler, style, or embed out of a user's collection.
+The same round trip makes the transform idempotent, so a value that has been
+through the editor once is unchanged by going through again.
+
+Two consequences worth naming. "Empty" is about what a field *says*, so
+`isFieldEmpty` reads its text — a `contenteditable` the user emptied is left
+holding a `<br>`, and the required-field rule must not pass on markup nobody
+can see. And everything written into a field is escaped on the way in: the
+capture (5.2, 10.3) and the source URL and title (M8) are all plain text, and
+a page whose title contains a tag must not put one into the collection.
+
+**Runs are also the coordinate system.** Concatenating a field's runs gives
+exactly the text `cloze.ts` works in, so a range chosen in the rendered field
+is already a range the model understands. That is what makes the editor's
+mapping (below) a measurement rather than a translation.
+
+**A field can be pinned** (10.6). `sticky.ts` holds which, keyed by note type
+and then by field, because a field belongs to its note type (3.1). Presence in
+the map is the pin and the value is what it last held, so a field can be
+pinned while empty. Only *empty* fields are filled on the next card: a pin is
+a convenience and must never overwrite what the user just selected.
 
 **Changing note type remaps by name; unmatched content is stashed, never
 dropped** (3.2). Fields whose names exist in both carry over. The rest move to
@@ -240,6 +272,16 @@ no parallel list of ranges to drift out of sync. `cloze.ts` parses on demand.
 Character ranges are read against the text as given and used immediately: a
 transition takes text plus a range and returns new text, and never holds an
 offset across an edit.
+
+`field-cloze.ts` is the bridge to a field that holds markup (M10). The model
+is unchanged — it is still asked first, and its verdict on the range, the
+ordinal, the overlap, and the braces is authoritative — and only once it has
+said yes are the braces spliced into the markup, as *unmarked* text, so bold
+`Paris` becomes `{{c1::<b>Paris</b>}}` rather than `<b>{{c1::Paris}}</b>`.
+The result is then checked against what the model produced: if the field's
+text and the model's text ever disagree, that is `cloze-markup-unstable`
+rather than markup whose meaning nobody can predict. Unwrapping cuts out the
+braces and leaves the formatting inside them where it was.
 
 ## Capture
 
@@ -515,6 +557,12 @@ them arrive later, and each ships an in-memory fake in
 | `SettingsStore` | `Result<…, SettingsStoreError>` | `src/platform/settings-store.ts`, over `StoragePort`, M8 |
 | `RememberedStore` | `Result<…, RememberedStoreError>` | `src/platform/remembered-store.ts`, over `StoragePort`, M8 |
 
+`Remembered` carries two things now: the deck the last card went into (8.5)
+and the sticky pins (10.6). Both live under one storage key, so everything
+that writes it goes through `updateRemembered` in `src/sidebar/session.ts` —
+a write that replaced the whole value would silently drop whichever half the
+other caller had just made.
+
 `RememberedStore` is a fourth port rather than three more keys on `Settings`,
 because 8.5 requires what the extension *noticed* to be kept apart from what
 the user *chose* — and "apart" has to be mechanical or it decays into a
@@ -596,6 +644,13 @@ protection against itself.
 - **Duplicates are a warning, not a block** (4.4). `canAddNote` reports one
   through `canAddNotes`; `addNote` sends `allowDuplicate: true`, so a user who
   is told and goes ahead anyway is not stopped.
+- **The collection's existing tags are readable**, through `getTags` (10.9).
+  It feeds the tag editor's completion and nothing else, so a collection that
+  will not report them costs the completion and never the card.
+- **Field order is the collection's** (10.1). `modelFieldNames` answers in
+  Anki's own order and nothing between it and the rendered editor sorts or
+  re-keys the list — which is the whole of what that decision costs, and why
+  a test holds it against a note type whose order is not alphabetical.
 - **The fields go out verbatim, and nothing is injected.** Source URL and title
   are provenance on the draft (3.6); a note type with a field for them is
   filled by the editor. Cloze braces are passed through untouched — parsing
@@ -626,20 +681,27 @@ id an unpacked build loads under. Both live in `src/manifest/manifest.ts`.
 
 ## The sidebar editor
 
-`src/sidebar/` is the whole UI (M6). It is handed an `AnkiClient` and renders
-a `CardDraft`. It holds no protocol knowledge and reaches no `browser.*` API,
-so its tests run against M3's in-memory fake rather than a running Anki.
+`src/sidebar/` is the whole UI (M6, rebuilt to Anki's own shape in M10). It is
+handed an `AnkiClient` and renders a `CardDraft`. It holds no protocol
+knowledge and reaches no `browser.*` API, so its tests run against M3's
+in-memory fake rather than a running Anki.
 
 | Module | Holds |
 |--------|-------|
 | `Panel.svelte` | The shell: connection status, and the editor once there is a client to build it against. |
 | `editor-model.svelte.ts` | The view-model — the draft, the asynchronous state, and every intent. |
-| `CardEditor.svelte` | The form: deck, note type, fields, source, warnings, actions. |
+| `CardEditor.svelte` | The form: pickers, toolbar, fields, tags, source, warnings, actions. |
+| `Picker.svelte` | A name chosen out of a list, with a filter over it (M10). |
+| `FieldEditor.svelte` | One field: the rich input, its HTML source view, and its pin (M10). |
+| `FormatToolbar.svelte` | Anki's formatting buttons, and the cloze controls with them (M10). |
 | `ClozeControls.svelte` | The deletion list, and the two things done to it. |
-| `TagEditor.svelte` | Tags in, intents out. |
+| `TagEditor.svelte` | Tags in, intents out, with completion from the collection. |
+| `selection.dom.ts` | A `contenteditable`'s selection as text offsets, and back (M10). |
+| `shortcuts.ts` | Which keystroke means which command (M10). |
+| `types.ts` | `FieldApi` — what a field lets the toolbar do to it. |
 | `error-copy.ts` | Every sentence the editor says about a failure. |
 | `connect.ts` | The two reads the panel makes over the message channel (M5). |
-| `session.ts` | The two moves on the draft slots (M7). |
+| `session.ts` | The moves on the draft slots (M7), and every write to what is remembered. |
 
 **One view-model between the components and the ports** (6.2). Loading and
 error state lives there instead of being scattered across components, which
@@ -667,24 +729,67 @@ refused mark actually say.
 
 **Native controls with real labels** (6.5): `select`, `textarea`, `input`,
 `button`, `details`. A custom listbox would be an accessibility liability
-bought for nothing.
+bought for nothing — which is also why the deck and note-type pickers (M10)
+are a `<select>` with a filter box beside it rather than a combobox of our
+own: a real collection has dozens of each, and the browser already has the
+keyboard behaviour correct.
 
-**Cloze editing is a plain `<textarea>` and its `selectionStart` /
-`selectionEnd`** (6.6) — superseded deliberately by M10's rich editor (P10).
-Marking is "wrap this range", which a textarea gives for free. The component
-reads the range, hands it to the card model, renders what comes back, and
-puts the caret past the markup that was written; otherwise a second mark
-lands wherever the value update left the cursor. `Ctrl+Shift+C` is Anki's own
-shortcut for it.
+**Fields are `contenteditable`, not `<textarea>`** (10.2, superseding 6.6 per
+P10). Anki stores field content as HTML and its own editor is rich, so a
+plain textarea cannot offer bold, italic, or sub- and superscript. Each field
+also carries an **HTML source toggle** (10.4) — where cloze braces are easiest
+to fix, and the escape hatch when the rich editor does the wrong thing — and a
+**pin** (10.6).
+
+**No browser editing command is trusted.** Every formatting action is a pure
+function of the field's HTML and a text range, in `field-html.ts`; the
+component renders what comes back. That is what makes "bold applied to this
+selection produces this markup" a test at the value level rather than a test
+of `document.execCommand`, and it is why the same code produces the same field
+in a jsdom test and in Firefox. The paste handler is owned for the same
+reason: the clipboard is the one route by which a page's markup arrives whole,
+so it is sanitised and spliced in at the selection rather than inserted by the
+browser (10.5).
+
+**The selection is measured, not translated** (M10's named risk). `cloze.ts`
+takes text offsets and a `contenteditable` hands back a DOM `Range`;
+`selection.dom.ts` walks the field counting exactly what `fieldText` counts —
+a text node's characters, a `<br>` as one newline — so the two are the same
+coordinate space. It has tests of its own, independent of any component,
+because the mapping is where the off-by-one bugs live and finding them through
+a rendered editor would be finding them twice.
+
+**The toolbar acts on the last selection a field reported.** Pressing a button
+moves the focus off the field first, so asking the field at that point would
+be asking too late; each `FieldEditor` announces its selection as the caret
+moves, and `CardEditor` holds the last answer. After an action rewrites the
+field the selection is put back, so bold-then-italic over one phrase is two
+presses rather than two selections.
+
+**The keyboard is Anki's** (10.7), in one table in `shortcuts.ts` rather than
+a pile of conditions in a handler. `Ctrl+B`, `Ctrl+I`, `Ctrl+U`, `Ctrl+=`,
+`Ctrl+Shift+=`, `Ctrl+Shift+C`, `Ctrl+Alt+Shift+C`, `Ctrl+Shift+X`, and
+`Ctrl+Enter` are claimed with `preventDefault` — including the ones the
+browser would spend on the bookmarks sidebar and view-source, because an
+editor without bold or underline is not one. **`Ctrl+R` is deliberately not
+claimed**: Anki clears formatting with it and the browser reloads with it, and
+10.7 matches Anki only where there is no collision, so that one is a toolbar
+button and nothing else.
 
 **The cloze controls appear for cloze note types only** (6.7), read from
 `NoteType.kind` — the adapter's descriptor (4.6) — never by matching the note
 type's name in the UI.
 
-**The duplicate warning does not block** (4.4). It appears when `canAddNote`
-reports that Anki already holds the first field, and it stops appearing the
-moment that field changes: a warning about text the user has already replaced
-is worse than no warning.
+**The duplicate warning does not block** (4.4), and it is shown **on the first
+field** the way Anki shows it rather than as a banner (10.8). It appears when
+`canAddNote` reports that Anki already holds that field, and it stops
+appearing the moment the field changes: a warning about text the user has
+already replaced is worse than no warning.
+
+**Tag completion comes from the collection** (10.9), through a `<datalist>` —
+which completes, filters as the user types, is reachable from the keyboard,
+and does not refuse a value that is not in it. A tag Anki has never seen is
+exactly what the first card on a new subject needs.
 
 **The note type is reconciled against Anki on open** (M7's risk). A user may
 rename or reorder a note type's fields in Anki while a draft sits in the
@@ -719,6 +824,12 @@ every edit is still stored.
 scrolled past is not evidence of anything. A failed write there costs the next
 capture its starting deck and nothing else, so it does not join the errors the
 user is asked to act on.
+
+**A pinned field's content is noted on the add too** (10.6), by the
+view-model, for the same reason: a field a card actually went to Anki with is
+evidence, and one that was halfway typed is not. It is carried into the next
+card in `load()`, after the note type has been reconciled — the pins are keyed
+by note type, and the note type is only settled once Anki has spoken.
 
 **The panel is keyed on the capture, not on the draft.** It re-reads on every
 storage change, and the editor's own saves are among them; remounting on those

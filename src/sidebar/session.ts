@@ -1,11 +1,13 @@
 import type { CardDraft } from "@/core/draft";
 import type {
+  Remembered,
   DraftStore,
   DraftStoreError,
   RememberedStore,
   RememberedStoreError,
 } from "@/core/ports/types";
 import { ok, type Result } from "@/core/result";
+import { pinField, recordSticky, unpinField } from "@/core/sticky";
 
 /**
  * The two moves the sidebar makes on the draft slots (7.3, 7.4).
@@ -55,6 +57,23 @@ export function dismissPending(
 }
 
 /**
+ * Read, change, write — the one place anything remembered is written.
+ *
+ * Two separate things live under that key now: the deck a card last went into
+ * (8.5) and the sticky pins (10.6). A caller that wrote its own half whole
+ * would silently drop the other's, and neither would ever notice.
+ */
+export async function updateRemembered(
+  store: RememberedStore,
+  change: (current: Remembered) => Remembered,
+): Promise<Result<void, RememberedStoreError>> {
+  const current = await store.load();
+  if (!current.ok) return current;
+
+  return store.save(change(current.value));
+}
+
+/**
  * Note the deck a card went into, so the next capture starts there (8.5).
  *
  * On the add rather than on the dropdown: a deck someone scrolled past is not
@@ -68,5 +87,40 @@ export function rememberDeck(
 ): Promise<Result<void, RememberedStoreError>> {
   if (deck.trim() === "") return Promise.resolve(ok(undefined));
 
-  return remembered.save({ lastDeck: deck });
+  return updateRemembered(remembered, (current) => ({
+    ...current,
+    lastDeck: deck,
+  }));
+}
+
+/** Pin a field, or let it go (10.6). The value is what it should carry. */
+export function setStickyPin(
+  remembered: RememberedStore,
+  noteType: string,
+  field: string,
+  value: string,
+  pinned: boolean,
+): Promise<Result<void, RememberedStoreError>> {
+  return updateRemembered(remembered, (current) => ({
+    ...current,
+    sticky: pinned
+      ? pinField(current.sticky ?? {}, noteType, field, value)
+      : unpinField(current.sticky ?? {}, noteType, field),
+  }));
+}
+
+/**
+ * Note what the pinned fields held on the card that was added (10.6).
+ *
+ * On the add, like the deck and for the same reason: a field a card actually
+ * went to Anki with is evidence, and one that was halfway typed is not.
+ */
+export function rememberSticky(
+  remembered: RememberedStore,
+  draft: CardDraft,
+): Promise<Result<void, RememberedStoreError>> {
+  return updateRemembered(remembered, (current) => ({
+    ...current,
+    sticky: recordSticky(current.sticky ?? {}, draft),
+  }));
 }

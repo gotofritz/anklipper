@@ -1,5 +1,6 @@
 import type { CaptureWarning } from "./capture";
-import { findMalformedCloze, stripCloze } from "./cloze";
+import { findMalformedClozeInField, stripClozeFromField } from "./field-cloze";
+import { isFieldEmpty } from "./field-html";
 import type { NoteType, NoteTypeKind } from "./note-type";
 import { hasField, primaryFieldOf, sameNoteType } from "./note-type";
 import type { Result } from "./result";
@@ -45,7 +46,11 @@ export interface GenerationMetadata {
 export interface CardDraft {
   readonly deck: string;
   readonly noteType: NoteType;
-  /** Keyed by the note type's real field names (3.1). */
+  /**
+   * Keyed by the note type's real field names (3.1). The values are **HTML**,
+   * as Anki itself stores them (10.2) — `field-html.ts` is what may produce
+   * one, and what reads the text back out of it.
+   */
   readonly fields: FieldMap;
   /** Content a note-type switch could not carry over, keyed by note type (3.2). */
   readonly stash: Readonly<Record<string, FieldMap>>;
@@ -134,8 +139,9 @@ export function setField(
   }
 
   const fields = { ...draft.fields, [field]: value };
-  const stash =
-    value.trim() === "" ? withoutStashed(draft.stash, field) : draft.stash;
+  const stash = isFieldEmpty(value)
+    ? withoutStashed(draft.stash, field)
+    : draft.stash;
 
   return ok({ ...draft, fields, stash });
 }
@@ -170,7 +176,7 @@ export function setNoteType(draft: CardDraft, noteType: NoteType): CardDraft {
   const unmatched: Record<string, string> = {};
   for (const [field, value] of Object.entries(draft.fields)) {
     if (hasField(noteType, field)) carried[field] = value;
-    else if (value.trim() !== "") unmatched[field] = value;
+    else if (!isFieldEmpty(value)) unmatched[field] = value;
   }
 
   const stash: Record<string, FieldMap> = { ...draft.stash };
@@ -183,7 +189,7 @@ export function setNoteType(draft: CardDraft, noteType: NoteType): CardDraft {
   const fields: Record<string, string> = {};
   for (const field of noteType.fields) {
     const value = carried[field] ?? "";
-    fields[field] = value.trim() === "" ? (restored?.[field] ?? "") : value;
+    fields[field] = isFieldEmpty(value) ? (restored?.[field] ?? "") : value;
   }
 
   return { ...draft, noteType, fields, stash };
@@ -215,7 +221,7 @@ export function refreshNoteType(
   const unmatched: Record<string, string> = {};
   for (const [field, value] of Object.entries(draft.fields)) {
     if (hasField(noteType, field)) carried[field] = value;
-    else if (value.trim() !== "") unmatched[field] = value;
+    else if (!isFieldEmpty(value)) unmatched[field] = value;
   }
 
   const stash: Record<string, FieldMap> = { ...draft.stash };
@@ -326,7 +332,7 @@ export function convertFromCloze(
 
   const from = primaryFieldOf(draft.noteType);
   const text = from === undefined ? "" : (draft.fields[from] ?? "");
-  if (findMalformedCloze(text)) {
+  if (findMalformedClozeInField(text)) {
     return err({
       code: "cloze-markup-malformed",
       message: `the markup in ${from} does not parse, so it cannot be stripped`,
@@ -334,7 +340,7 @@ export function convertFromCloze(
     });
   }
 
-  return carryPrimary(draft, noteType, stripCloze(text));
+  return carryPrimary(draft, noteType, stripClozeFromField(text));
 }
 
 /** The switch first, so 3.2 still stashes; then the carried value on top. */
@@ -352,7 +358,7 @@ function carryPrimary(
   }
 
   const switched = setNoteType(draft, noteType);
-  if (value.trim() === "") return ok(switched);
+  if (isFieldEmpty(value)) return ok(switched);
 
   return ok({ ...switched, fields: { ...switched.fields, [to]: value } });
 }

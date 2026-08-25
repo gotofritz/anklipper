@@ -1,6 +1,7 @@
 import type { PageCapture } from "./capture";
 import type { CardDraft, GenerationMetadata } from "./draft";
 import { createDraft } from "./draft";
+import { fieldFromText } from "./field-html";
 import type { NoteType } from "./note-type";
 import { primaryFieldOf } from "./note-type";
 import type { FieldMapping, SourceUrlStyle } from "./source-fields";
@@ -52,6 +53,11 @@ export const BASIC_GENERATOR: GenerationMetadata = {
  * `Text` on Cloze — and the rest is left for the user. The source is kept
  * verbatim alongside, so provenance survives however the fields are edited
  * (3.6).
+ *
+ * The selection is *escaped* on the way in. Capture is plain text and stays
+ * plain text (5.2, 10.3), but a field holds HTML from M10 (10.2) — so the one
+ * thing this has to do is make sure a page whose text contains a tag does not
+ * put one into the user's collection.
  */
 export function generateBasicCard(
   selection: TextSelection,
@@ -65,7 +71,10 @@ export function generateBasicCard(
   const draft = createDraft({
     deck: defaults.deck,
     noteType: defaults.noteType,
-    fields: primary === undefined ? {} : { [primary]: selection.text.trim() },
+    fields:
+      primary === undefined
+        ? {}
+        : { [primary]: fieldFromText(selection.text.trim()) },
     tags: defaults.tags,
     source: {
       text: selection.text,

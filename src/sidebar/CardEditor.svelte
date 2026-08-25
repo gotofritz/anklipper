@@ -1,11 +1,20 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
 
   import type { CardDraft, DraftIssue } from "@/core/draft";
-  import { primaryFieldOf } from "@/core/note-type";
-  import type { AnkiClient, DraftStore, NoteId } from "@/core/ports/types";
+  import type { InlineMark } from "@/core/field-html";
+  import { INLINE_MARKS } from "@/core/field-html";
+  import type {
+    AnkiClient,
+    DraftStore,
+    NoteId,
+    RememberedStore,
+  } from "@/core/ports/types";
 
-  import ClozeControls from "./ClozeControls.svelte";
+  import FieldEditor from "./FieldEditor.svelte";
+  import FormatToolbar from "./FormatToolbar.svelte";
+  import Picker from "./Picker.svelte";
   import TagEditor from "./TagEditor.svelte";
   import { createEditorModel } from "./editor-model.svelte";
   import {
@@ -13,15 +22,24 @@
     draftIssueCopy,
     draftStoreErrorCopy,
   } from "./error-copy";
+  import type { TextRange } from "./selection.dom";
+  import { SHORTCUT_HINTS, commandFor } from "./shortcuts";
+  import type { EditorCommand } from "./shortcuts";
+  import type { FieldApi } from "./types";
 
   /**
-   * The sidebar editor (M6).
+   * The sidebar editor (M6, rebuilt to Anki's own shape in M10).
    *
    * It is handed the `AnkiClient` **port** — in tests M3's in-memory fake, in
    * M7 the AnkiConnect adapter — and never reaches a `browser.*` API or the
    * protocol itself. Every transition of the draft goes through the view-model
-   * to the card model's pure functions (6.1); the only thing this component
-   * computes for itself is where to leave the caret.
+   * to the card model's pure functions (6.1).
+   *
+   * What this component computes for itself is the caret, and only the caret.
+   * The fields are `contenteditable` now (10.2), so "where the selection is"
+   * is a DOM question with a text answer — `selection.dom.ts` maps between the
+   * two, and this holds the last answer each field gave, because a toolbar
+   * button takes the focus before its handler runs.
    *
    * The model is built once, from the draft this component was mounted with.
    * A new capture is a new draft, and the panel keys the editor on it, so the
@@ -31,6 +49,7 @@
     anki,
     draft,
     drafts,
+    remembered,
     onAdded,
     onCancel,
   }: {
@@ -38,6 +57,8 @@
     draft: CardDraft;
     /** Where every edit goes, from the moment it is made (7.1). */
     drafts: DraftStore;
+    /** Where the sticky pins live, alongside the last deck (8.5, 10.6). */
+    remembered: RememberedStore;
     /** The card is in Anki (7.3); what happens to the slot is the panel's. */
     onAdded?: (noteId: NoteId) => void | Promise<void>;
     onCancel?: () => void;
@@ -50,12 +71,26 @@
       anki,
       draft,
       drafts,
+      remembered,
       ...(onAdded === undefined ? {} : { onAdded }),
     }),
   );
 
-  /** The cloze field's textarea, for its selection and its caret (6.6). */
-  let clozeInput: HTMLTextAreaElement | undefined;
+  /**
+   * Every field's handle on its own caret, by field name. Nothing rendered
+   * reads it — it is looked up in handlers only — but the lint rule that
+   * catches a plain `Map` being read reactively does not know that, and a
+   * `SvelteMap` costs nothing.
+   */
+  const fields = new SvelteMap<string, FieldApi>();
+  /**
+   * The last selection any field reported, and which field reported it.
+   * Pressing a toolbar button moves the focus off the field first, so asking
+   * the field at that point would be asking too late.
+   */
+  let at = $state.raw<{ field: string; range: TextRange } | undefined>(
+    undefined,
+  );
 
   $effect(() => {
     void model.load();
@@ -78,18 +113,8 @@
     };
   });
 
-  const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  const fieldId = (name: string) => `field-${slug(name)}`;
-  const issueId = (name: string, index: number) =>
-    `${fieldId(name)}-issue-${index}`;
-
   const issuesFor = (name: string): readonly DraftIssue[] =>
     model.issues.filter((issue) => issue.field === name);
-
-  const describedBy = (name: string): string | undefined => {
-    const ids = issuesFor(name).map((_, index) => issueId(name, index));
-    return ids.length === 0 ? undefined : ids.join(" ");
-  };
 
   const generalIssues = $derived(
     model.issues.filter((issue) => issue.field === undefined),
@@ -115,11 +140,6 @@
     return { which, ...ankiErrorCopy(failed) };
   });
 
-  const duplicateCopy = ankiErrorCopy({
-    kind: "duplicate-note",
-    message: "canAddNotes said no",
-  });
-
   const submitFailure = $derived(
     model.submission.kind === "failed"
       ? ankiErrorCopy(model.submission.error)
@@ -134,10 +154,58 @@
       : draftStoreErrorCopy(model.saveError),
   );
 
-  /** The duplicate check is about the first field, so only that one re-runs it. */
-  function onFieldChange(name: string) {
-    if (name !== primaryFieldOf(model.draft.noteType)) return;
-    void model.checkDuplicate();
+  /** Which marks the current selection carries, for the toolbar's buttons. */
+  const marks = $derived.by(() => {
+    const state = {} as Record<InlineMark, boolean>;
+    for (const mark of INLINE_MARKS) {
+      state[mark] =
+        at !== undefined &&
+        model.isMarked(at.field, at.range.start, at.range.end, mark);
+    }
+
+    return state;
+  });
+
+  function register(name: string, api: FieldApi | undefined) {
+    if (api === undefined) {
+      fields.delete(name);
+      if (at?.field === name) at = undefined;
+    } else {
+      fields.set(name, api);
+    }
+  }
+
+  function onSelect(field: string, range: TextRange | undefined) {
+    if (range === undefined) return;
+    at = { field, range };
+  }
+
+  /**
+   * A formatting action rewrites the field's markup, which throws the DOM
+   * selection away. Putting it back is what makes bold-then-italic over one
+   * phrase two presses rather than two selections.
+   */
+  async function reselect(field: string, range: TextRange) {
+    await tick();
+    const api = fields.get(field);
+    api?.focus();
+    api?.select(range.start, range.end);
+  }
+
+  function applyMark(mark: InlineMark) {
+    if (at === undefined) return;
+    const { field, range } = at;
+
+    model.format(field, range.start, range.end, mark);
+    void reselect(field, range);
+  }
+
+  function clearFormatting() {
+    if (at === undefined) return;
+    const { field, range } = at;
+
+    model.clearFormat(field, range.start, range.end);
+    void reselect(field, range);
   }
 
   /**
@@ -146,29 +214,49 @@
    * field and a second mark becomes guesswork.
    */
   async function markSelection(ordinal?: number) {
-    const field = clozeInput;
+    const field = model.clozeField;
     if (field === undefined) return;
 
-    const caret = model.markCloze(
-      field.selectionStart,
-      field.selectionEnd,
-      ordinal,
-    );
+    const range = at?.field === field ? at.range : { start: 0, end: 0 };
+    const caret = model.markCloze(range.start, range.end, ordinal);
     if (caret === undefined) return;
 
+    at = undefined;
     await tick();
-    field.focus();
-    field.setSelectionRange(caret, caret);
+    const api = fields.get(field);
+    api?.focus();
+    api?.placeCaret(caret);
   }
 
-  /** Anki's own shortcut for the same thing, so the mouse is never required. */
-  function onFieldKeydown(name: string, event: KeyboardEvent) {
-    if (name !== model.clozeField) return;
-    if (event.key.toLowerCase() !== "c") return;
-    if (!(event.ctrlKey || event.metaKey) || !event.shiftKey) return;
+  /** Anki's "same deletion again": the ordinal already in progress (3.9). */
+  function markAsCurrent() {
+    const highest = model.deletions.reduce(
+      (top, one) => Math.max(top, one.ordinal),
+      0,
+    );
+    void markSelection(highest === 0 ? undefined : highest);
+  }
 
-    event.preventDefault();
-    void markSelection();
+  const MARK_FOR: Partial<Record<EditorCommand, InlineMark>> = {
+    bold: "b",
+    italic: "i",
+    underline: "u",
+    subscript: "sub",
+    superscript: "sup",
+  };
+
+  function run(command: EditorCommand) {
+    const mark = MARK_FOR[command];
+    if (mark !== undefined) {
+      applyMark(mark);
+      return;
+    }
+
+    if (command === "clear") clearFormatting();
+    else if (command === "cloze") void markSelection();
+    else if (command === "cloze-group") markAsCurrent();
+    else if (command === "source") fields.get(at?.field ?? "")?.toggleSource();
+    else if (command === "submit") void model.submit();
   }
 
   function submit(event: Event) {
@@ -176,11 +264,18 @@
     void model.submit();
   }
 
+  /**
+   * 10.7's chords, claimed from the browser where they collide: Ctrl+B is the
+   * bookmarks sidebar and Ctrl+U is view-source, and an editor that let either
+   * through would be an editor without bold or underline. Ctrl+R is the one
+   * this deliberately leaves alone — see `shortcuts.ts`.
+   */
   function onKeydown(event: KeyboardEvent) {
-    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      void model.submit();
-    }
+    const command = commandFor(event);
+    if (command === undefined) return;
+
+    event.preventDefault();
+    run(command);
   }
 
   /**
@@ -198,37 +293,28 @@
 </script>
 
 <!--
-  The keydown listener is the panel's shortcut for adding the card, and every
-  control it wraps is interactive in its own right, which is what the rule is
-  protecting.
+  The keydown listener is the editor's shortcut table, and every control it
+  wraps is interactive in its own right, which is what the rule is protecting.
 -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <form class="editor" onsubmit={submit} onkeydown={onKeydown}>
-  <div class="field">
-    <label for="deck">Deck</label>
-    <select
-      id="deck"
-      bind:value={() => model.draft.deck, (value) => model.setDeck(value)}
-    >
-      {#each model.deckOptions as name (name)}
-        <option value={name}>{name}</option>
-      {/each}
-    </select>
-  </div>
+  <Picker
+    id="deck"
+    label="Deck"
+    plural="decks"
+    value={model.draft.deck}
+    options={model.deckOptions}
+    onChange={(name) => model.setDeck(name)}
+  />
 
-  <div class="field">
-    <label for="note-type">Note type</label>
-    <select
-      id="note-type"
-      bind:value={
-        () => model.draft.noteType.name, (value) => model.setNoteType(value)
-      }
-    >
-      {#each model.noteTypeOptions as name (name)}
-        <option value={name}>{name}</option>
-      {/each}
-    </select>
-  </div>
+  <Picker
+    id="note-type"
+    label="Note type"
+    plural="note types"
+    value={model.draft.noteType.name}
+    options={model.noteTypeOptions}
+    onChange={(name) => model.setNoteType(name)}
+  />
 
   {#if model.decks.kind === "loading"}
     <p class="quiet">Loading decks from Anki…</p>
@@ -244,36 +330,38 @@
     </div>
   {/if}
 
+  <FormatToolbar
+    {marks}
+    onCommand={run}
+    onMark={(ordinal) => void markSelection(ordinal)}
+    onRemove={(ordinal) => model.removeCloze(ordinal)}
+    isCloze={model.isCloze}
+    deletions={model.deletions}
+    nextOrdinal={model.nextOrdinal}
+  />
+
+  <!--
+    10.1: the note type's own order, as the collection defines it. Nothing
+    between `modelFieldNames` and here sorts or re-keys the list, which is the
+    whole of what that decision costs.
+  -->
   {#each model.draft.noteType.fields as name (name)}
-    <div class="field">
-      <label for={fieldId(name)}>{name}</label>
-      <textarea
-        id={fieldId(name)}
-        rows="3"
-        aria-invalid={issuesFor(name).length > 0}
-        aria-describedby={describedBy(name)}
-        onchange={() => onFieldChange(name)}
-        onkeydown={(event) => onFieldKeydown(name, event)}
-        {@attach (node) => {
-          if (name !== model.clozeField) return;
-          clozeInput = node;
-          return () => {
-            if (clozeInput === node) clozeInput = undefined;
-          };
-        }}
-        bind:value={
-          () => model.draft.fields[name] ?? "",
-          (value) => model.setField(name, value)
-        }></textarea>
-      {#each issuesFor(name) as issue, index (index)}
-        <p class="problem" id={issueId(name, index)}>{draftIssueCopy(issue)}</p>
-      {/each}
-    </div>
+    <FieldEditor
+      {name}
+      {register}
+      {onSelect}
+      value={model.draft.fields[name] ?? ""}
+      issues={issuesFor(name)}
+      sticky={model.isSticky(name)}
+      duplicate={model.duplicateField === name}
+      onInput={(html) => model.setField(name, html)}
+      onToggleSticky={(field) => void model.toggleSticky(field)}
+    />
   {/each}
 
   {#if model.clozeTarget !== undefined}
     <!--
-      3.12's conversion, which the note-type dropdown alone cannot do: Basic
+      3.12's conversion, which the note-type picker alone cannot do: Basic
       and Cloze share no field name, so switching would stash the selection
       instead of carrying it into the field the deletions have to be in.
     -->
@@ -286,19 +374,14 @@
 
   {#if model.isCloze}
     <p class="quiet">
-      Select the text to hide in {model.clozeField}, then press Ctrl+Shift+C or
-      use the button below.
+      Select the text to hide in {model.clozeField}, then press
+      {SHORTCUT_HINTS.cloze ?? "the cloze shortcut"} or use the toolbar above.
     </p>
-    <ClozeControls
-      deletions={model.deletions}
-      nextOrdinal={model.nextOrdinal}
-      onMark={markSelection}
-      onRemove={(ordinal) => model.removeCloze(ordinal)}
-    />
   {/if}
 
   <TagEditor
     tags={model.draft.tags}
+    known={model.knownTags.kind === "ready" ? model.knownTags.value : []}
     onAdd={(tag) => model.addTag(tag)}
     onRemove={(tag) => model.removeTag(tag)}
   />
@@ -325,12 +408,6 @@
     <p class="problem">{draftIssueCopy(issue)}</p>
   {/each}
 
-  {#if model.duplicate.kind === "ready" && model.duplicate.value}
-    <p class="warning" role="status">
-      {duplicateCopy.cause}
-      {duplicateCopy.action}
-    </p>
-  {/if}
   {#if model.duplicate.kind === "failed"}
     <p class="quiet">Could not check whether Anki already has this card.</p>
   {/if}
@@ -401,24 +478,6 @@
     max-width: 100%;
   }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    min-width: 0;
-  }
-
-  select,
-  textarea {
-    min-width: 0;
-    width: 100%;
-  }
-
-  textarea {
-    font: inherit;
-    resize: vertical;
-  }
-
   .actions {
     display: flex;
     flex-wrap: wrap;
@@ -427,10 +486,6 @@
 
   .problem {
     color: var(--problem, #a4000f);
-    margin: 0;
-  }
-
-  .warning {
     margin: 0;
   }
 

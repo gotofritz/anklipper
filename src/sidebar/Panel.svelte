@@ -34,7 +34,10 @@
     drafts: DraftStore;
     /** The capture that arrived while that one was still open (7.4). */
     pending: DraftStore;
-    /** Where the deck a card went into is noted, for the next capture (8.5). */
+    /**
+     * Where the deck a card went into is noted for the next capture (8.5),
+     * and where the sticky pins live (10.6).
+     */
     remembered: RememberedStore;
     /**
      * Open the options page. Absent in tests that do not care, and absent on
@@ -192,7 +195,14 @@
       which two right-clicks cannot.
     -->
     {#key draft.createdAt}
-      <CardEditor {anki} {draft} {drafts} {onAdded} onCancel={discard} />
+      <CardEditor
+        {anki}
+        {draft}
+        {drafts}
+        {remembered}
+        {onAdded}
+        onCancel={discard}
+      />
     {/key}
   {:else if capture.kind === "unavailable"}
     <p>The draft could not be read — {capture.reason}</p>

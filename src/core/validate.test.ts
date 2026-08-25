@@ -122,4 +122,27 @@ describe("cloze validation (3.7)", () => {
       [],
     );
   });
+
+  // Fields hold HTML from M10 (10.2), so the deletions are read off the
+  // field's text — otherwise a user who bolded half a deletion would be told
+  // their markup is malformed.
+  it("reads deletions through the field's markup", () => {
+    expect(validateDraft(clozeDraft("<b>{{c1::Pa</b>ris}} is here."))).toEqual(
+      [],
+    );
+  });
+});
+
+describe("fields that hold markup (10.2)", () => {
+  it("counts a field with nothing but a line break as empty", () => {
+    expect(codes(draft({ fields: { Front: "<br>" } }))).toEqual([
+      "field-required",
+    ]);
+  });
+
+  it("counts a field whose only content is formatting as filled", () => {
+    expect(validateDraft(draft({ fields: { Front: "<b>Paris</b>" } }))).toEqual(
+      [],
+    );
+  });
 });

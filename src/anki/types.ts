@@ -12,6 +12,7 @@ export type AnkiAction =
   | "modelNames"
   | "modelFieldNames"
   | "modelTemplates"
+  | "getTags"
   | "canAddNotes"
   | "addNote";
 

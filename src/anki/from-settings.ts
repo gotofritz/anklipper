@@ -90,6 +90,10 @@ export function createSettingsAnkiClient(deps: SettingsAnkiDeps): AnkiClient {
       return (await configured()).noteTypes();
     },
 
+    async tags(): Promise<Result<readonly string[], AnkiError>> {
+      return (await configured()).tags();
+    },
+
     async canAddNote(draft: CardDraft): Promise<Result<boolean, AnkiError>> {
       return (await configured()).canAddNote(draft);
     },
