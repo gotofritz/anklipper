@@ -12,9 +12,10 @@ built next, see [the plan index](plans/00-plan.md).
 Written at M2, which created the extension skeleton, extended at M3 with the
 card model and the ports, at M4 with the AnkiConnect adapter behind the first
 of them, at M5 with selection capture — the context menu, the shortcut, and
-the extraction that fills a draft — and at M6 with the sidebar editor built
-on all of it. Where a layer named below does not exist yet, this file says
-so.
+the extraction that fills a draft — at M6 with the sidebar editor built on
+all of it, and at M7 with the two joined: the real adapter under the real
+editor, and the draft made durable from the moment it exists. Where a layer
+named below does not exist yet, this file says so.
 
 ## What the extension is
 
@@ -42,6 +43,7 @@ implementation and an in-memory fake, and tests run against the fake.
 | Page context | `src/content/` | ports, messaging | M2 |
 | Sidebar UI | `src/sidebar/` | ports, messaging | M2 |
 | Sidebar editor: view-model and components | `src/sidebar/` | ports, the card model | M6 |
+| The draft in flight: the two slots and the moves on them | `src/sidebar/session.ts` | ports | M7 |
 | Page extraction | `src/content/extract.dom.ts` | `PageCapture`, a document | M5 |
 | AnkiConnect adapter | `src/anki/` | the card model, `fetch` | M4 |
 | Entrypoints | `src/entrypoints/` | everything | M1 |
@@ -70,6 +72,12 @@ so the surface a fake has to cover stays small.
 | `commands.ts` | `CommandsPort` | `browser.commands.onCommand` |
 | `draft-store.ts` | `DraftStore` (the M3 port) | `StoragePort` |
 
+`createStoredDrafts(storage, key)` is one draft under one key. There are two
+keys — `draft` and `pending-draft` — because one card is edited at a time and
+a capture made while another is open has to wait somewhere (7.4). Both
+contexts hold one store per slot; neither holds a wider interface with the
+slot baked into the method names.
+
 In-memory fakes live in `src/platform/fakes/`.
 
 ### The sidebar wrapper
@@ -94,7 +102,16 @@ The extension has three contexts — background, content script, sidebar — and
 one channel between them.
 
 The union has three members: `ping`, `capture-selection` (background to a
-content script, M5), and `get-draft` (sidebar to the background, M5).
+content script, M5), and `get-draft` (sidebar to the background, M5). From M7
+`get-draft` answers with **both** slots — the draft being edited and the
+capture waiting behind it — because the sidebar cannot ask which card the
+user meant unless it is told there are two.
+
+Reads of the draft go over the channel; **writes do not**. The sidebar writes
+its edits (7.1) and hands the slot over (7.3, 7.4) through `DraftStore`
+directly, against the same storage keys the background writes captures to. A
+write routed through the background would have to survive an event page that
+is unloaded when idle, to reach the same storage in the end.
 
 **Every message is a member of one discriminated union** on a `type` field,
 declared in `src/messaging/types.ts` (2.1). All three contexts import that
@@ -259,6 +276,21 @@ The draft is stored, and the sidebar reads it back out with `get-draft` — the
 two finish in no fixed order, and the background is unloaded when idle, so
 nothing is held in memory between them.
 
+**A capture never overwrites a card that is open** (7.4). The capture reads
+the draft slot first: empty, and it takes it; occupied, and the new draft
+goes to the waiting slot instead, for the sidebar to ask about. A value the
+store cannot read is not a card anyone is editing, so it is replaced rather
+than protected — and whatever was already waiting is replaced freely, since
+nothing edits the waiting slot and so there is nothing in it to lose. The
+capture reports which slot it used, and `describeCapture` carries that
+through.
+
+**Defaults are constants until M8.** `FALLBACK_DEFAULTS` in
+`src/background/capture.ts` is Anki's own `Default` deck and its own `Basic`,
+so a capture is addable without an edit. The note type there is the name
+heuristic's guess (3.7); the sidebar replaces it with Anki's own descriptor
+as soon as it can reach one.
+
 **The sidebar re-reads on every capture, not only on mount.** Firefox's
 sidebar persists per window, so after the first card it is already open when
 the next gesture happens. It watches the draft key through
@@ -275,6 +307,51 @@ production wires no reporter.
 **Nothing is injected at page load.** The content script is registered with no
 match patterns; a tab with none answers `no-receiver`, which buys exactly one
 `scripting.executeScript` and one retry.
+
+## The draft in flight
+
+M7's subject, and the first place in this extension where a user's own work
+can be lost.
+
+**The draft is durable from the moment it exists, edits included** (7.1). The
+capture stores it before anything renders it; the sidebar writes every edit
+back as it is made. Neither context may hold it in memory alone: Firefox's
+event page and Chrome's service worker are unloaded when idle, and Firefox's
+sidebar goes with the window it belongs to.
+
+The write is **debounced** — `SAVE_DEBOUNCE_MS`, in the view-model — because
+both of the obvious policies are wrong. On every keystroke is wasteful; on
+blur loses the last field. So it is flushed on two events besides the timer:
+before a submit, and on `pagehide`, which is the last thing either browser
+delivers to a sidebar that is closing.
+
+**A write happens only while the slot still holds that capture.** The
+debounce means an edit can be outstanding when the slot changes hands, and
+the flush the editor makes as it unmounts is exactly when that happens — so
+the write reads the slot first and does nothing unless it still holds the
+capture it belongs to. Otherwise a keystroke made just before **Use the new
+selection** would write the replaced card back over the one the user chose.
+
+**Discarding is a named button and nothing else.** It empties the slot, there
+is no undo, and a keyboard shortcut for that in a milestone about not losing
+work would be a mistake.
+
+**A failed add changes nothing** (7.2). The draft stands as edited, the error
+names its cause and its next action, and **Try again** sends the same draft.
+Retry is manual (7.5): an automatic queue needs ordering and conflict rules
+that are not worth designing before there is evidence about which failures
+actually recur.
+
+**Success hands the slot over** (7.3). The card is in Anki, so the draft is no
+longer in flight: the panel promotes whatever was waiting behind it, or
+empties the slot, and says **Added to Anki.** in place of the first-run text.
+The editor stops writing at that point — a debounced write landing afterwards
+would put the card that was just added straight back into the slot.
+
+`src/sidebar/session.ts` holds the two moves on the slots. They are one
+operation with two triggers: the card was added, or the user said they meant
+the newer selection. Nothing is destroyed before its replacement is known,
+since the waiting capture is the only copy of itself.
 
 ## Ports
 
@@ -406,6 +483,7 @@ so its tests run against M3's in-memory fake rather than a running Anki.
 | `TagEditor.svelte` | Tags in, intents out. |
 | `error-copy.ts` | Every sentence the editor says about a failure. |
 | `connect.ts` | The two reads the panel makes over the message channel (M5). |
+| `session.ts` | The two moves on the draft slots (M7). |
 
 **One view-model between the components and the ports** (6.2). Loading and
 error state lives there instead of being scattered across components, which
@@ -452,14 +530,36 @@ reports that Anki already holds the first field, and it stops appearing the
 moment that field changes: a warning about text the user has already replaced
 is worse than no warning.
 
-**The sidebar entrypoint composes the adapter.** `App.svelte` builds
-`createAnkiClient` over the runtime origin (P8) and the host-permission check
-and hands it to `Panel`, which requires it — a missing one is a `svelte-check`
-error, so the editor cannot be left unmounted. Until the user grants the
-loopback host permission, every call answers `permission-missing` before
+**The note type is reconciled against Anki on open** (M7's risk). A user may
+rename or reorder a note type's fields in Anki while a draft sits in the
+sidebar, and field names are the draft's keys (3.1) — submitting one Anki no
+longer has would be refused three layers from anywhere it could be explained.
+`refreshNoteType` applies 3.2's rule to a note type that kept its name, and
+returns the draft itself when the two readings agree, so an ordinary open is
+not an edit. It also takes Anki's flavour over the capture's guess, which is
+how a Basic capture learns it is on a cloze note type at all.
+
+**Converting to cloze is a button, not a dropdown change** (3.12). Basic and
+Cloze share no field name, so the plain switch would stash the selection
+rather than carry it into the field the deletions have to be in. The target
+is the first cloze note type Anki reported — its own reading of the flavour
+(4.6), never a name matched in the UI — and the button is absent when there
+is none, or when the card is already cloze.
+
+**The sidebar entrypoint composes the adapter and both draft slots.**
+`App.svelte` builds `createAnkiClient` over the runtime origin (P8) and the
+host-permission check, and `createStoredDrafts` over `StoragePort` for the
+draft and for the capture waiting behind it. All three are required props on
+`Panel` — a missing one is a `svelte-check` error, so the editor cannot be
+left unmounted or left unable to save. Until the user grants the loopback host
+permission, every AnkiConnect call answers `permission-missing` before
 touching the network, and the editor says so and offers to retry; the fields,
-tags, and cloze controls work regardless. Persisting the draft, retry, and
-deck and note-type defaults are still M7's.
+tags, and cloze controls work regardless, and every edit is still stored.
+
+**The panel is keyed on the capture, not on the draft.** It re-reads on every
+storage change, and the editor's own saves are among them; remounting on those
+would throw away the caret and anything typed since. `createdAt` is the
+capture's identity — one gesture, one timestamp.
 
 ## Permissions
 

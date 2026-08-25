@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { PageCapture } from "@/core/capture";
+import type { CardDraft } from "@/core/draft";
+import { createDraft } from "@/core/draft";
+import type { DraftStore } from "@/core/ports/types";
 import { createFakeDraftStore } from "@/core/ports/fakes/fake-draft-store";
-import { ok } from "@/core/result";
+import { err, ok } from "@/core/result";
 import { createMessenger } from "@/messaging/messenger";
 import { createFakeRuntimeMessaging } from "@/platform/fakes/fake-runtime-messaging";
 import type { ScriptingPort } from "@/platform/scripting";
 import type { SidebarPort } from "@/platform/sidebar";
+import { BASIC } from "@/fixtures/note-types";
 
 import { captureFromGesture, describeCapture } from "./capture";
 
@@ -56,6 +60,7 @@ function deps(
     scripting: fakeScripting(),
     sidebar: fakeSidebar(),
     drafts: createFakeDraftStore(),
+    pending: createFakeDraftStore(),
     now: () => new Date("2026-01-01T12:00:00.000Z"),
     ...overrides,
   };
@@ -261,6 +266,7 @@ describe("describeCapture", () => {
 
     expect(describeCapture(result)).toEqual({
       outcome: "captured",
+      stored: "draft",
       warnings: ["context-truncated"],
     });
   });
@@ -364,5 +370,119 @@ describe("a sidebar that does not finish opening", () => {
     );
 
     expect(result.ok === false && result.error.kind).toBe("no-tab");
+  });
+});
+
+/**
+ * 7.4. One draft is edited at a time, and a second gesture must not throw the
+ * first away: silently discarding an edited draft because the user selected
+ * something else is the same data loss 7.1 exists to prevent, arriving from a
+ * different direction.
+ */
+describe("a capture while a draft is already in flight", () => {
+  const IN_FLIGHT = createDraft({
+    deck: "Geography",
+    noteType: BASIC,
+    fields: { Front: "Half-written." },
+    source: {
+      text: "Half-written.",
+      context: "",
+      url: "https://example.test/earlier",
+      title: "Earlier",
+    },
+    createdAt: "2026-01-01T11:00:00.000Z",
+    generation: { name: "basic", version: 1 },
+  });
+
+  it("parks the new draft behind the one in flight", async () => {
+    const withDeps = deps({ drafts: createFakeDraftStore(IN_FLIGHT) });
+
+    const result = await captureFromGesture({ tabId: 7 }, withDeps);
+
+    expect(result.ok && result.value.stored).toBe("pending");
+    await expect(withDeps.drafts.load()).resolves.toEqual({
+      ok: true,
+      value: IN_FLIGHT,
+    });
+    await expect(withDeps.pending.load()).resolves.toEqual({
+      ok: true,
+      value: result.ok ? result.value.draft : undefined,
+    });
+  });
+
+  it("takes the draft slot when nothing is in flight", async () => {
+    const withDeps = deps();
+
+    const result = await captureFromGesture({ tabId: 7 }, withDeps);
+
+    expect(result.ok && result.value.stored).toBe("draft");
+    await expect(withDeps.pending.load()).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  // Nothing edits what is waiting, so there is nothing in it to lose.
+  it("replaces whatever was already waiting", async () => {
+    const withDeps = deps({
+      drafts: createFakeDraftStore(IN_FLIGHT),
+      pending: createFakeDraftStore(IN_FLIGHT),
+    });
+
+    const result = await captureFromGesture({ tabId: 7 }, withDeps);
+
+    const waiting = await withDeps.pending.load();
+    expect(waiting.ok && waiting.value?.source.url).toBe(
+      "https://example.test/france",
+    );
+    expect(result.ok && result.value.stored).toBe("pending");
+  });
+
+  // A value the store cannot read is not a card anyone is editing, so there
+  // is nothing to protect and prompting about it would be nonsense.
+  it("takes the draft slot when what is stored cannot be read", async () => {
+    const saved: CardDraft[] = [];
+    const unreadable: DraftStore = {
+      load: async () =>
+        err({ kind: "malformed-stored-value", message: "not a draft" }),
+      save: async (draft: CardDraft) => {
+        saved.push(draft);
+        return ok(undefined);
+      },
+      clear: async () => ok(undefined),
+    };
+    const withDeps = deps({ drafts: unreadable });
+
+    const result = await captureFromGesture({ tabId: 7 }, withDeps);
+
+    expect(result.ok && result.value.stored).toBe("draft");
+    expect(saved).toHaveLength(1);
+    await expect(withDeps.pending.load()).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it("reports a waiting draft that could not be stored", async () => {
+    const pending = createFakeDraftStore();
+    pending.failWith({ kind: "write-failed", message: "quota exceeded" });
+
+    const result = await captureFromGesture(
+      { tabId: 7 },
+      deps({ drafts: createFakeDraftStore(IN_FLIGHT), pending }),
+    );
+
+    expect(result.ok === false && result.error.kind).toBe("not-saved");
+  });
+
+  it("says where the capture was put", async () => {
+    const report = describeCapture(
+      await captureFromGesture(
+        { tabId: 7 },
+        deps({ drafts: createFakeDraftStore(IN_FLIGHT) }),
+      ),
+    );
+
+    expect(report).toMatchObject({ outcome: "captured", stored: "pending" });
   });
 });

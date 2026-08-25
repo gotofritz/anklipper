@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { PageCapture } from "@/core/capture";
+import { createDraft } from "@/core/draft";
 import { createFakeDraftStore } from "@/core/ports/fakes/fake-draft-store";
 import { ok } from "@/core/result";
 import { createMessenger } from "@/messaging/messenger";
 import type { ContextMenuClick } from "@/platform/context-menus";
 import type { CommandInvocation } from "@/platform/commands";
 import { createFakeRuntimeMessaging } from "@/platform/fakes/fake-runtime-messaging";
+import { BASIC } from "@/fixtures/note-types";
 
 import type { CaptureReport } from "./capture";
 import { CAPTURE_COMMAND, CAPTURE_MENU_ITEM, startBackground } from "./start";
@@ -20,6 +22,20 @@ const CAPTURE: PageCapture = {
   url: "https://example.test/france",
   warnings: [],
 };
+
+const DRAFT = createDraft({
+  deck: "Geography",
+  noteType: BASIC,
+  fields: { Front: "Half-written." },
+  source: {
+    text: "Half-written.",
+    context: "",
+    url: "https://example.test/earlier",
+    title: "Earlier",
+  },
+  createdAt: "2026-01-01T11:00:00.000Z",
+  generation: { name: "basic", version: 1 },
+});
 
 function harness(overrides: Record<string, unknown> = {}) {
   const transport = createFakeRuntimeMessaging();
@@ -51,6 +67,7 @@ function harness(overrides: Record<string, unknown> = {}) {
     scripting: { inject: vi.fn(async () => ok(undefined)) },
     sidebar: { open: vi.fn(async () => ok(undefined)) },
     drafts: createFakeDraftStore(),
+    pending: createFakeDraftStore(),
     now: () => new Date("2026-01-01T12:00:00.000Z"),
     ...overrides,
   };
@@ -202,7 +219,48 @@ describe("background", () => {
 
     const reply = await createMessenger(transport).send({ type: "get-draft" });
 
-    expect(reply).toEqual({ ok: true, value: { draft: undefined } });
+    expect(reply).toEqual({
+      ok: true,
+      value: { draft: undefined, pending: undefined },
+    });
+  });
+
+  // 7.4: the sidebar cannot ask which card the user meant unless it is told
+  // that a second one is waiting.
+  it("hands over the waiting capture alongside the draft", async () => {
+    const { transport, deps, clicks } = harness();
+    await deps.drafts.save(DRAFT);
+    startBackground(deps);
+    clicks.forEach((click) =>
+      click({ menuItemId: CAPTURE_MENU_ITEM, tabId: 7 }),
+    );
+    await vi.waitFor(async () => {
+      const waiting = await deps.pending.load();
+      expect(waiting.ok && waiting.value).toBeDefined();
+    });
+
+    const reply = await createMessenger(transport).send({ type: "get-draft" });
+
+    expect(reply.ok && reply.value.draft?.source.title).toBe("Earlier");
+    expect(reply.ok && reply.value.pending?.source.title).toBe(
+      "France — Example",
+    );
+  });
+
+  it("treats a waiting capture it cannot read as none", async () => {
+    const { transport, deps } = harness();
+    deps.pending.failWith({
+      kind: "malformed-stored-value",
+      message: "not a draft",
+    });
+    startBackground(deps);
+
+    const reply = await createMessenger(transport).send({ type: "get-draft" });
+
+    expect(reply).toEqual({
+      ok: true,
+      value: { draft: undefined, pending: undefined },
+    });
   });
 });
 
@@ -252,7 +310,11 @@ describe("reporting what a capture did", () => {
     );
 
     await vi.waitFor(() => expect(reports).toHaveLength(1));
-    expect(reports[0]).toEqual({ outcome: "captured", warnings: [] });
+    expect(reports[0]).toEqual({
+      outcome: "captured",
+      stored: "draft",
+      warnings: [],
+    });
   });
 
   it("captures fine with nobody listening for reports", async () => {

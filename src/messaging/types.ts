@@ -32,8 +32,16 @@ export interface ResponseMap {
    * card, and the warning is what makes the degradation visible.
    */
   readonly "capture-selection": PageCapture;
-  /** `undefined` when nothing has been captured yet — the first-run state. */
-  readonly "get-draft": { readonly draft: CardDraft | undefined };
+  /**
+   * `draft` is `undefined` when nothing has been captured yet — the first-run
+   * state. `pending` is the capture that arrived while `draft` was already
+   * being edited (7.4), which the sidebar asks the user about rather than
+   * replacing their work with.
+   */
+  readonly "get-draft": {
+    readonly draft: CardDraft | undefined;
+    readonly pending: CardDraft | undefined;
+  };
 }
 
 export type ResponseOf<K extends MessageType> = ResponseMap[K];

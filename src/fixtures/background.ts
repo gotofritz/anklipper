@@ -23,6 +23,7 @@ export function backgroundDeps(
     scripting: { inject: async () => ok(undefined) },
     sidebar: { open: async () => ok(undefined) },
     drafts: createFakeDraftStore(),
+    pending: createFakeDraftStore(),
     ...overrides,
   };
 }

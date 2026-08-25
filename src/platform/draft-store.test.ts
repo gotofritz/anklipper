@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import { createDraft } from "@/core/draft";
 import { BASIC } from "@/fixtures/note-types";
 
-import { DRAFT_KEY, createStoredDrafts, watchDraft } from "./draft-store";
+import {
+  DRAFT_KEY,
+  PENDING_KEY,
+  createStoredDrafts,
+  watchDraft,
+} from "./draft-store";
 import type { StoragePort } from "./storage";
 
 const DRAFT = createDraft({
@@ -93,8 +98,10 @@ describe("stored drafts", () => {
     expect(saved.ok === false && saved.error.message).toContain("quota");
   });
 
-  // What the sidebar subscribes to when it is already open (M5).
-  it("watches the key the draft is stored under", () => {
+  // What the sidebar subscribes to when it is already open (M5), and from
+  // M7 the waiting capture as well (7.4): a prompt nobody is told about is
+  // one nobody answers.
+  it("watches both the draft key and the waiting one", () => {
     const watched: string[] = [];
     const storage = fakeStorage();
     storage.onChanged = (key: string) => {
@@ -104,7 +111,17 @@ describe("stored drafts", () => {
 
     watchDraft(storage, () => {});
 
-    expect(watched).toEqual([DRAFT_KEY]);
+    expect(watched).toEqual([DRAFT_KEY, PENDING_KEY]);
+  });
+
+  it("stops watching both keys again", () => {
+    const stopped: string[] = [];
+    const storage = fakeStorage();
+    storage.onChanged = (key: string) => () => stopped.push(key);
+
+    watchDraft(storage, () => {})();
+
+    expect(stopped).toEqual([DRAFT_KEY, PENDING_KEY]);
   });
 
   it("reports a storage read that threw", async () => {
@@ -116,5 +133,37 @@ describe("stored drafts", () => {
     const loaded = await createStoredDrafts(storage).load();
 
     expect(loaded.ok === false && loaded.error.kind).toBe("read-failed");
+  });
+});
+
+/**
+ * The capture that arrived while a draft was already being edited (7.4). It
+ * is the same store under a second key: one draft is in flight at a time, and
+ * the newer selection waits rather than overwriting it.
+ */
+describe("the waiting capture", () => {
+  it("is stored under its own key, not the draft's", async () => {
+    const storage = fakeStorage();
+
+    await createStoredDrafts(storage, PENDING_KEY).save(DRAFT);
+
+    expect(storage.written[PENDING_KEY]).toEqual(DRAFT);
+    expect(storage.written[DRAFT_KEY]).toBeUndefined();
+  });
+
+  it("round-trips and clears independently of the draft", async () => {
+    const storage = fakeStorage();
+    const drafts = createStoredDrafts(storage);
+    const pending = createStoredDrafts(storage, PENDING_KEY);
+    await drafts.save(DRAFT);
+    await pending.save(DRAFT);
+
+    await pending.clear();
+
+    await expect(pending.load()).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+    await expect(drafts.load()).resolves.toEqual({ ok: true, value: DRAFT });
   });
 });

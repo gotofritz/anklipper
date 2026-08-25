@@ -77,7 +77,7 @@ AnkiConnect interface precedes the editor that renders its data.
 | M4 | AnkiConnect adapter and its error taxonomy, against mocked HTTP | M3 | done: `docs/archive/04-ankiconnect-adapter.md` |
 | M5 | Selection and page-context extraction; context menu and shortcut | M2, M3 | done: `docs/archive/05-selection-and-page-context.md` |
 | M6 | Sidebar editor, built against the fake adapter | M3, M4 | done: `docs/archive/06-svelte-editor.md` |
-| M7 | End-to-end MVP, with the draft persisted from the moment it exists | M4, M5, M6 | `07-end-to-end-mvp.md` |
+| M7 | End-to-end MVP, with the draft persisted from the moment it exists | M4, M5, M6 | done: `docs/archive/07-end-to-end-mvp.md` |
 | M8 | Settings, storage, and schema migration | M7 | `08-settings-and-persistence.md` |
 | M9 | Onboarding, connection diagnostics, repeat-capture polish | M8 | `09-onboarding-and-diagnostics.md` |
 | M10 | Card editor parity: every note type, its own fields in order, formatting, sticky fields, tags | M9 | `10-card-editor-parity.md` |

@@ -3,12 +3,16 @@
 
   import type { CardDraft, DraftIssue } from "@/core/draft";
   import { primaryFieldOf } from "@/core/note-type";
-  import type { AnkiClient } from "@/core/ports/types";
+  import type { AnkiClient, DraftStore, NoteId } from "@/core/ports/types";
 
   import ClozeControls from "./ClozeControls.svelte";
   import TagEditor from "./TagEditor.svelte";
   import { createEditorModel } from "./editor-model.svelte";
-  import { ankiErrorCopy, draftIssueCopy } from "./error-copy";
+  import {
+    ankiErrorCopy,
+    draftIssueCopy,
+    draftStoreErrorCopy,
+  } from "./error-copy";
 
   /**
    * The sidebar editor (M6).
@@ -26,22 +30,52 @@
   const {
     anki,
     draft,
+    drafts,
+    onAdded,
     onCancel,
   }: {
     anki: AnkiClient;
     draft: CardDraft;
+    /** Where every edit goes, from the moment it is made (7.1). */
+    drafts: DraftStore;
+    /** The card is in Anki (7.3); what happens to the slot is the panel's. */
+    onAdded?: (noteId: NoteId) => void | Promise<void>;
     onCancel?: () => void;
   } = $props();
 
   // Deliberately the values this component was mounted with: the model owns
   // the draft from here on, and a new capture arrives as a remount (see above).
-  const model = untrack(() => createEditorModel({ anki, draft }));
+  const model = untrack(() =>
+    createEditorModel({
+      anki,
+      draft,
+      drafts,
+      ...(onAdded === undefined ? {} : { onAdded }),
+    }),
+  );
 
   /** The cloze field's textarea, for its selection and its caret (6.6). */
   let clozeInput: HTMLTextAreaElement | undefined;
 
   $effect(() => {
     void model.load();
+  });
+
+  /**
+   * The other half of M7's persistence risk: a debounce that has not fired
+   * when the sidebar goes away would lose the last thing typed. Firefox
+   * unloads the sidebar document when the panel is closed, and `pagehide` is
+   * the last event either browser delivers.
+   */
+  $effect(() => {
+    const flush = () => void model.flush();
+    window.addEventListener("pagehide", flush);
+
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      void model.flush();
+      model.stop();
+    };
   });
 
   const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -92,6 +126,14 @@
       : undefined,
   );
 
+  // 7.1's failure. Everything still looks edited and none of it is anywhere,
+  // which is the one failure the user cannot see coming.
+  const saveFailure = $derived(
+    model.saveError === undefined
+      ? undefined
+      : draftStoreErrorCopy(model.saveError),
+  );
+
   /** The duplicate check is about the first field, so only that one re-runs it. */
   function onFieldChange(name: string) {
     if (name !== primaryFieldOf(model.draft.noteType)) return;
@@ -135,22 +177,30 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onCancel?.();
-      return;
-    }
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       void model.submit();
     }
   }
+
+  /**
+   * Throwing the card away is deliberate and has no undo, so it is a named
+   * button and nothing else. M6 bound Escape to it as well, when the panel
+   * left it unwired and it did nothing; now that it empties the slot, a stray
+   * keypress is not how to ask for it.
+   */
+  function discard() {
+    // The outstanding edit goes with the card. The flush on unmount would
+    // otherwise race the slot being emptied.
+    model.stop();
+    onCancel?.();
+  }
 </script>
 
 <!--
-  The keydown listener is the panel's two shortcuts — Escape to cancel,
-  Ctrl+Enter to add — and every control it wraps is interactive in its own
-  right, which is what the rule is protecting.
+  The keydown listener is the panel's shortcut for adding the card, and every
+  control it wraps is interactive in its own right, which is what the rule is
+  protecting.
 -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <form class="editor" onsubmit={submit} onkeydown={onKeydown}>
@@ -221,6 +271,19 @@
     </div>
   {/each}
 
+  {#if model.clozeTarget !== undefined}
+    <!--
+      3.12's conversion, which the note-type dropdown alone cannot do: Basic
+      and Cloze share no field name, so switching would stash the selection
+      instead of carrying it into the field the deletions have to be in.
+    -->
+    <div>
+      <button type="button" onclick={() => model.convertToCloze()}>
+        Convert to cloze
+      </button>
+    </div>
+  {/if}
+
   {#if model.isCloze}
     <p class="quiet">
       Select the text to hide in {model.clozeField}, then press Ctrl+Shift+C or
@@ -285,10 +348,25 @@
       This card is not ready yet — fix what is marked above.
     </p>
   {:else if submitFailure !== undefined}
+    <!--
+      7.2: the draft is intact and nothing has to be re-entered, so the retry
+      is one press. 7.5 keeps it manual — an automatic queue needs ordering
+      and conflict rules this milestone deliberately does not design.
+    -->
     <div class="problem" role="alert">
       <p>{submitFailure.cause}</p>
       <p>{submitFailure.action}</p>
+      <button type="button" onclick={() => void model.submit()}>
+        Try again
+      </button>
     </div>
+  {/if}
+
+  {#if saveFailure !== undefined}
+    <p class="problem" role="alert">
+      This card could not be saved, so closing the sidebar would lose it.
+      {saveFailure}
+    </p>
   {/if}
 
   <div class="actions">
@@ -299,7 +377,7 @@
     >
       Add card
     </button>
-    <button type="button" onclick={() => onCancel?.()}>Cancel</button>
+    <button type="button" onclick={discard}>Discard card</button>
   </div>
 </form>
 

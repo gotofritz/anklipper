@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDraft } from "@/core/draft";
 import type { CardDraft } from "@/core/draft";
 import type { NoteType } from "@/core/note-type";
+import { createNoteType } from "@/core/note-type";
 import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
+import { createFakeDraftStore } from "@/core/ports/fakes/fake-draft-store";
 import { BASIC, CLOZE, VOCAB } from "@/fixtures/note-types";
 
 import { createEditorModel } from "./editor-model.svelte";
@@ -34,8 +36,15 @@ function modelFor(
     decks: ["Geography", "Default"],
     noteTypes: [BASIC, VOCAB, CLOZE],
   }),
+  overrides: Partial<Parameters<typeof createEditorModel>[0]> = {},
 ) {
-  return { model: createEditorModel({ anki, draft }), anki };
+  const drafts = createFakeDraftStore(draft);
+
+  return {
+    model: createEditorModel({ anki, draft, drafts, ...overrides }),
+    anki,
+    drafts,
+  };
 }
 
 describe("what the editor knows before it has asked Anki anything", () => {
@@ -386,5 +395,382 @@ describe("adding the card", () => {
     expect(model.submission.kind).toBe("added");
     expect(anki.added).toHaveLength(1);
     expect(anki.added[0]?.fields["Front"]).toBe("Capital of France?");
+  });
+});
+
+/**
+ * 7.1. The draft is durable from the moment it exists, and an edit is part of
+ * it: both browsers unload the background when idle and Firefox's sidebar
+ * goes with the window, so work held only in memory is lost without the user
+ * doing anything wrong.
+ */
+describe("persisting what the user types", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("writes the edit once the typing stops", async () => {
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 50,
+    });
+
+    model.setField("Back", "Paris");
+    await vi.advanceTimersByTimeAsync(50);
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.fields["Back"]).toBe("Paris");
+  });
+
+  // Writing on every keystroke is the wasteful half of M7's risk; writing
+  // only on blur is the half that loses the last field.
+  it("writes once for a run of keystrokes, and writes the last of them", async () => {
+    const writes: string[] = [];
+    const drafts = createFakeDraftStore(BASIC_DRAFT);
+    const recording = {
+      ...drafts,
+      save: async (draft: CardDraft) => {
+        writes.push(draft.fields["Back"] ?? "");
+        return drafts.save(draft);
+      },
+    };
+    const { model } = modelFor(BASIC_DRAFT, undefined, {
+      drafts: recording,
+      debounceMs: 50,
+    });
+
+    model.setField("Back", "P");
+    model.setField("Back", "Pa");
+    model.setField("Back", "Paris");
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(writes).toEqual(["Paris"]);
+  });
+
+  it("has not written yet while the user is still typing", async () => {
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 50,
+    });
+
+    model.setField("Back", "Paris");
+    await vi.advanceTimersByTimeAsync(20);
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.fields["Back"]).toBe("");
+  });
+
+  // The draft has to be safe before the card goes anywhere: a failed add is
+  // the case 7.2 exists for, and it must leave the edits behind.
+  it("flushes the outstanding edit before it submits", async () => {
+    const anki = createFakeAnkiClient({ noteTypes: [BASIC] });
+    anki.failWith({ kind: "anki-not-running", message: "nothing answered" });
+    const { model, drafts } = modelFor(BASIC_DRAFT, anki, {
+      debounceMs: 5_000,
+    });
+
+    model.setField("Back", "Paris");
+    await model.submit();
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.fields["Back"]).toBe("Paris");
+  });
+
+  it("flushes on demand, for a sidebar that is about to close", async () => {
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 5_000,
+    });
+
+    model.setField("Back", "Paris");
+    await model.flush();
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.fields["Back"]).toBe("Paris");
+  });
+
+  // Silently failing to save is the one failure the user cannot see coming.
+  it("says so when the edit could not be stored", async () => {
+    const drafts = createFakeDraftStore(BASIC_DRAFT);
+    drafts.failWith({ kind: "write-failed", message: "quota exceeded" });
+    const { model } = modelFor(BASIC_DRAFT, undefined, { drafts });
+
+    model.setField("Back", "Paris");
+    await model.flush();
+
+    expect(model.saveError).toEqual({
+      kind: "write-failed",
+      message: "quota exceeded",
+    });
+  });
+
+  it("stops saying so once a write gets through", async () => {
+    const drafts = createFakeDraftStore(BASIC_DRAFT);
+    drafts.failWith({ kind: "write-failed", message: "quota exceeded" });
+    const { model } = modelFor(BASIC_DRAFT, undefined, { drafts });
+    model.setField("Back", "Paris");
+    await model.flush();
+
+    drafts.failWith(undefined);
+    model.setField("Back", "Paris, France");
+    await model.flush();
+
+    expect(model.saveError).toBeUndefined();
+  });
+
+  // 7.3 hands the slot over the moment the card is in Anki. A late write
+  // would put the card that was just added back into it.
+  it("writes nothing more once the card has been added", async () => {
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 50,
+    });
+    await model.submit();
+    await drafts.clear();
+
+    model.setField("Back", "Paris");
+    await vi.advanceTimersByTimeAsync(50);
+    await model.flush();
+
+    await expect(drafts.load()).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  /**
+   * The slot can be handed over while an edit is still waiting: the card was
+   * added, discarded, or replaced by the newer selection (7.3, 7.4). A write
+   * landing afterwards would resurrect a card the user is finished with, or
+   * overwrite the one they chose instead.
+   */
+  it("does not write into a slot that has been emptied", async () => {
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 50,
+    });
+
+    model.setField("Back", "Paris");
+    await drafts.clear();
+    await model.flush();
+
+    await expect(drafts.load()).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it("does not overwrite the card that took the slot", async () => {
+    const later = draftOf(BASIC, { Front: "Capital of Germany?" });
+    const newer = { ...later, createdAt: "2026-01-01T12:05:00.000Z" };
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 50,
+    });
+
+    model.setField("Back", "Paris");
+    await drafts.save(newer);
+    await model.flush();
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.fields["Front"]).toBe(
+      "Capital of Germany?",
+    );
+  });
+
+  it("drops an outstanding edit when it is stopped", async () => {
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 50,
+    });
+
+    model.setField("Back", "Paris");
+    model.stop();
+    await vi.advanceTimersByTimeAsync(50);
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.fields["Back"]).toBe("");
+  });
+});
+
+/** 7.2 and 7.5: the same draft, sent again, with nothing to re-enter. */
+describe("retrying a failed add", () => {
+  it("sends the same draft again and succeeds", async () => {
+    const anki = createFakeAnkiClient({ noteTypes: [BASIC] });
+    anki.failWith({ kind: "anki-not-running", message: "nothing answered" });
+    const { model } = modelFor(BASIC_DRAFT, anki);
+    model.setField("Back", "Paris");
+    await model.submit();
+    expect(model.submission.kind).toBe("failed");
+
+    anki.failWith(undefined);
+    await model.submit();
+
+    expect(model.submission.kind).toBe("added");
+    expect(anki.added).toHaveLength(1);
+    expect(anki.added[0]?.fields["Back"]).toBe("Paris");
+  });
+
+  it("keeps the draft and its edits across the failure", async () => {
+    const anki = createFakeAnkiClient({ noteTypes: [BASIC] });
+    anki.failWith({ kind: "timeout", message: "Anki never answered" });
+    const { model } = modelFor(BASIC_DRAFT, anki);
+
+    model.setField("Back", "Paris");
+    await model.submit();
+
+    expect(model.draft.fields["Back"]).toBe("Paris");
+    expect(model.submission).toEqual({
+      kind: "failed",
+      error: { kind: "timeout", message: "Anki never answered" },
+    });
+  });
+});
+
+/** 7.3: the card is in Anki, so the slot it was held in is handed over. */
+describe("what happens after a successful add", () => {
+  it("tells its caller the note id", async () => {
+    const added: number[] = [];
+    const { model } = modelFor(BASIC_DRAFT, undefined, {
+      onAdded: (noteId: number) => {
+        added.push(noteId);
+      },
+    });
+
+    await model.submit();
+
+    expect(added).toEqual([1]);
+  });
+
+  it("says nothing when the add failed", async () => {
+    const anki = createFakeAnkiClient({ noteTypes: [BASIC] });
+    anki.failWith({ kind: "unknown-deck", message: "no such deck" });
+    const added: number[] = [];
+    const { model } = modelFor(BASIC_DRAFT, anki, {
+      onAdded: (noteId: number) => {
+        added.push(noteId);
+      },
+    });
+
+    await model.submit();
+
+    expect(added).toEqual([]);
+  });
+});
+
+/**
+ * M6 left 3.12's conversion without an affordance; M7's flow is where it gets
+ * one. The switch alone would stash everything — Basic and Cloze share no
+ * field name — so the selection has to be carried across deliberately.
+ */
+describe("converting a captured card to cloze", () => {
+  it("offers the cloze note type Anki reported", async () => {
+    const { model } = modelFor();
+    expect(model.clozeTarget).toBeUndefined();
+
+    await model.load();
+
+    expect(model.clozeTarget?.name).toBe("Cloze");
+  });
+
+  it("has nothing to offer a card that is already cloze", async () => {
+    const { model } = modelFor(CLOZE_DRAFT);
+    await model.load();
+
+    expect(model.clozeTarget).toBeUndefined();
+  });
+
+  it("carries the selection into the cloze field", async () => {
+    const { model } = modelFor();
+    await model.load();
+
+    model.convertToCloze();
+
+    expect(model.draft.noteType.name).toBe("Cloze");
+    expect(model.draft.fields["Text"]).toBe("Capital of France?");
+    expect(model.isCloze).toBe(true);
+  });
+
+  it("does nothing when Anki has reported no cloze note type", async () => {
+    const { model } = modelFor(
+      BASIC_DRAFT,
+      createFakeAnkiClient({ noteTypes: [BASIC, VOCAB] }),
+    );
+    await model.load();
+
+    model.convertToCloze();
+
+    expect(model.draft.noteType.name).toBe("Basic");
+  });
+
+  it("persists the conversion like any other edit", async () => {
+    const { model, drafts } = modelFor();
+    await model.load();
+
+    model.convertToCloze();
+    await model.flush();
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.noteType.name).toBe("Cloze");
+  });
+});
+
+/**
+ * M7's risk: a note type edited in Anki while the draft is open. Submitting
+ * field names it no longer has would be refused by AnkiConnect, three layers
+ * from anywhere it could be explained.
+ */
+describe("reconciling the note type against Anki", () => {
+  const RENAMED = createNoteType({
+    name: "Basic",
+    fields: ["Front", "Reverse"],
+  });
+
+  it("remaps the draft onto the fields Anki reports now", async () => {
+    const { model } = modelFor(
+      draftOf(BASIC, { Front: "Capital of France?", Back: "Paris" }),
+      createFakeAnkiClient({ noteTypes: [RENAMED] }),
+    );
+
+    await model.load();
+
+    expect(model.draft.noteType.fields).toEqual(["Front", "Reverse"]);
+    expect(model.draft.fields["Front"]).toBe("Capital of France?");
+    expect(model.draft.stash).toEqual({ Basic: { Back: "Paris" } });
+  });
+
+  // The capture's note type is the name heuristic's guess (3.7); Anki reads
+  // the flavour off the templates (4.6), and a custom cloze note type with no
+  // "cloze" in its name is exactly what the heuristic gets wrong.
+  it("takes the flavour Anki reports over the one the name suggested", async () => {
+    const fromAnki = createNoteType({
+      name: "Basic",
+      fields: ["Front", "Back"],
+      kind: "cloze",
+    });
+    const { model } = modelFor(
+      BASIC_DRAFT,
+      createFakeAnkiClient({ noteTypes: [fromAnki] }),
+    );
+
+    await model.load();
+
+    expect(model.isCloze).toBe(true);
+  });
+
+  it("leaves an unchanged draft alone", async () => {
+    const { model } = modelFor();
+    const before = model.draft;
+
+    await model.load();
+
+    expect(model.draft).toBe(before);
+  });
+
+  it("leaves the draft alone when Anki does not report its note type", async () => {
+    const { model } = modelFor(
+      BASIC_DRAFT,
+      createFakeAnkiClient({ noteTypes: [VOCAB] }),
+    );
+
+    await model.load();
+
+    expect(model.draft.noteType.fields).toEqual(["Front", "Back"]);
   });
 });

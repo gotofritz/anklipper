@@ -5,6 +5,7 @@ import {
   deriveNoteTypeKind,
   hasField,
   primaryFieldOf,
+  sameNoteType,
 } from "./note-type";
 
 describe("deriveNoteTypeKind", () => {
@@ -77,5 +78,80 @@ describe("field helpers", () => {
     expect(primaryFieldOf(createNoteType({ name: "Empty", fields: [] }))).toBe(
       undefined,
     );
+  });
+});
+
+/**
+ * Whether two descriptors of the same note type say the same thing. The
+ * sidebar re-reads note types from Anki on open (M7) and reconciles the draft
+ * when they have changed underneath it; without this every open would rewrite
+ * a draft nothing had happened to.
+ */
+describe("sameNoteType", () => {
+  const basic = createNoteType({ name: "Basic", fields: ["Front", "Back"] });
+
+  it("is true for two readings of an unchanged note type", () => {
+    expect(
+      sameNoteType(
+        basic,
+        createNoteType({ name: "Basic", fields: ["Front", "Back"] }),
+      ),
+    ).toBe(true);
+  });
+
+  it("is false when a field was renamed", () => {
+    expect(
+      sameNoteType(
+        basic,
+        createNoteType({ name: "Basic", fields: ["Front", "Reverse"] }),
+      ),
+    ).toBe(false);
+  });
+
+  // Anki reorders fields, and the draft's field order is Anki's (3.1).
+  it("is false when the fields were reordered", () => {
+    expect(
+      sameNoteType(
+        basic,
+        createNoteType({ name: "Basic", fields: ["Back", "Front"] }),
+      ),
+    ).toBe(false);
+  });
+
+  // The flavour comes off the templates (4.6) and the capture's own guess is
+  // the name heuristic's; a disagreement is exactly what has to be noticed.
+  it("is false when the flavour differs", () => {
+    expect(
+      sameNoteType(
+        basic,
+        createNoteType({
+          name: "Basic",
+          fields: ["Front", "Back"],
+          kind: "cloze",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("is false for two different note types", () => {
+    expect(
+      sameNoteType(
+        basic,
+        createNoteType({ name: "Vocab", fields: ["Front", "Back"] }),
+      ),
+    ).toBe(false);
+  });
+
+  it("is false when what Anki requires has changed", () => {
+    expect(
+      sameNoteType(
+        basic,
+        createNoteType({
+          name: "Basic",
+          fields: ["Front", "Back"],
+          requiredFields: ["Front", "Back"],
+        }),
+      ),
+    ).toBe(false);
   });
 });

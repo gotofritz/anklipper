@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createNoteType } from "@/core/note-type";
 import { BASIC, CLOZE, VOCAB } from "@/fixtures/note-types";
 
 import {
@@ -10,6 +11,7 @@ import {
   createDraft,
   isWellFormedTag,
   noteTypeKindOf,
+  refreshNoteType,
   removeTag,
   setDeck,
   setField,
@@ -295,5 +297,54 @@ describe("provenance (3.6)", () => {
     const edited = unwrap(setField(draft(), "Front", "rewritten by hand"));
 
     expect(edited.source).toEqual(SOURCE);
+  });
+});
+
+/**
+ * The same note type, re-read from Anki (M7's risk). A user may edit a note
+ * type in Anki while a draft is open, and submitting field names it no longer
+ * has would be refused three layers away — so the sidebar reconciles on open,
+ * by 3.2's rule rather than a second one.
+ */
+describe("refreshNoteType", () => {
+  const renamed = createNoteType({
+    name: "Basic",
+    fields: ["Front", "Reverse"],
+  });
+
+  it("carries fields whose names survived", () => {
+    const before = unwrap(setField(draft(), "Front", "Paris"));
+
+    const after = refreshNoteType(before, renamed);
+
+    expect(after.noteType.fields).toEqual(["Front", "Reverse"]);
+    expect(after.fields).toEqual({ Front: "Paris", Reverse: "" });
+  });
+
+  it("stashes content whose field is gone rather than dropping it", () => {
+    const before = unwrap(setField(draft(), "Back", "In France"));
+
+    const after = refreshNoteType(before, renamed);
+
+    expect(after.stash).toEqual({ Basic: { Back: "In France" } });
+  });
+
+  it("takes the fresh descriptor even when the fields are unchanged", () => {
+    // Anki reports the flavour from the templates (4.6); the capture's own
+    // note type is the name heuristic's guess, and this is where it is
+    // corrected.
+    const fromAnki = createNoteType({
+      name: "Basic",
+      fields: ["Front", "Back"],
+      kind: "cloze",
+    });
+
+    expect(noteTypeKindOf(refreshNoteType(draft(), fromAnki))).toBe("cloze");
+  });
+
+  it("leaves a draft alone when the note type is a different one", () => {
+    const before = draft();
+
+    expect(refreshNoteType(before, VOCAB)).toBe(before);
   });
 });

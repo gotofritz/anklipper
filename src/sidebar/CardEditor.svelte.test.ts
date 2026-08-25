@@ -6,6 +6,7 @@ import { createDraft } from "@/core/draft";
 import type { CardDraft } from "@/core/draft";
 import type { NoteType } from "@/core/note-type";
 import { createFakeAnkiClient } from "@/core/ports/fakes/fake-anki-client";
+import { createFakeDraftStore } from "@/core/ports/fakes/fake-draft-store";
 import type { AnkiClient, AnkiError } from "@/core/ports/types";
 import type { Result } from "@/core/result";
 import { BASIC, CLOZE, VOCAB } from "@/fixtures/note-types";
@@ -65,11 +66,19 @@ function pendingClient(): AnkiClient {
 function renderEditor(
   draft: CardDraft = BASIC_DRAFT,
   client: AnkiClient = anki(),
+  overrides: Record<string, unknown> = {},
 ) {
   const onCancel = vi.fn();
-  const rendered = render(CardEditor, { anki: client, draft, onCancel });
+  const drafts = createFakeDraftStore(draft);
+  const rendered = render(CardEditor, {
+    anki: client,
+    draft,
+    drafts,
+    onCancel,
+    ...overrides,
+  });
 
-  return { ...rendered, onCancel };
+  return { ...rendered, onCancel, drafts };
 }
 
 /** Everything the editor sent to Anki, for the fake only. */
@@ -206,14 +215,27 @@ describe("5 and 6. adding the card", () => {
     expect(added(client)).toHaveLength(1);
   });
 
-  it("cancels without sending anything", async () => {
+  it("discards without sending anything", async () => {
     const client = anki();
     const { onCancel } = renderEditor(BASIC_DRAFT, client);
 
-    await fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    await fireEvent.click(screen.getByRole("button", { name: /discard/i }));
 
     expect(onCancel).toHaveBeenCalled();
     expect(added(client)).toEqual([]);
+  });
+
+  // Discarding throws the card away, and the panel has no undo. A stray key
+  // is not the way to ask for that, in the milestone whose whole subject is
+  // not losing the user's work.
+  it("does not discard on a stray Escape", async () => {
+    const { onCancel } = renderEditor();
+
+    await fireEvent.keyDown(screen.getByLabelText("Front"), {
+      key: "Escape",
+    });
+
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });
 
@@ -488,5 +510,124 @@ describe("17. marking without a mouse", () => {
     renderEditor(CLOZE_DRAFT);
 
     expect(screen.getByText(/ctrl.*shift.*c/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * 7.1 to 7.5, at the surface the user actually touches. The view-model's own
+ * tests cover the rules; these cover that they are reachable.
+ */
+describe("18. the draft survives the sidebar", () => {
+  it("stores what was typed", async () => {
+    const { drafts } = renderEditor();
+
+    await fireEvent.input(screen.getByLabelText("Back"), {
+      target: { value: "Paris" },
+    });
+    await addCard();
+
+    const stored = await drafts.load();
+    // Cleared on success by the panel, not here, so it is still readable.
+    expect(stored.ok && stored.value?.fields["Back"]).toBe("Paris");
+  });
+
+  it("says so when it could not be stored", async () => {
+    const drafts = createFakeDraftStore(BASIC_DRAFT);
+    drafts.failWith({ kind: "write-failed", message: "quota exceeded" });
+    renderEditor(BASIC_DRAFT, anki(), { drafts });
+
+    await fireEvent.input(screen.getByLabelText("Back"), {
+      target: { value: "Paris" },
+    });
+    await addCard();
+
+    expect(await screen.findByText(/could not be saved/i)).toBeInTheDocument();
+  });
+});
+
+describe("19. retrying a failed add", () => {
+  it("offers a retry that sends the same card, with nothing re-entered", async () => {
+    const client = anki();
+    renderEditor(BASIC_DRAFT, client);
+    await screen.findByRole("option", { name: "Default" });
+    await fireEvent.input(screen.getByLabelText("Back"), {
+      target: { value: "Paris" },
+    });
+    client.failWith({ kind: "anki-not-running", message: "nothing answered" });
+    await addCard();
+    await screen.findByText(/anki is not running/i);
+
+    client.failWith(undefined);
+    await fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    expect(await screen.findByText(/added to anki/i)).toBeInTheDocument();
+    expect(added(client)).toHaveLength(1);
+    expect(added(client)[0]?.fields["Back"]).toBe("Paris");
+  });
+
+  it("keeps the fields as they were while the add is failing", async () => {
+    const client = anki();
+    renderEditor(BASIC_DRAFT, client);
+    await screen.findByRole("option", { name: "Default" });
+    await fireEvent.input(screen.getByLabelText("Back"), {
+      target: { value: "Paris" },
+    });
+    client.failWith({ kind: "timeout", message: "Anki never answered" });
+
+    await addCard();
+
+    expect(await screen.findByText(/never answered/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Back")).toHaveValue("Paris");
+  });
+});
+
+describe("20. converting a captured card to cloze", () => {
+  it("turns the selection into the cloze field", async () => {
+    renderEditor();
+    await screen.findByRole("option", { name: "Default" });
+
+    await fireEvent.click(
+      screen.getByRole("button", { name: /convert to cloze/i }),
+    );
+
+    expect(await screen.findByLabelText("Text")).toHaveValue(
+      "Capital of France?",
+    );
+    expect(
+      screen.getByRole("button", { name: /mark selection/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("is not offered for a card that is already cloze", async () => {
+    renderEditor(CLOZE_DRAFT);
+    await screen.findByRole("option", { name: "Default" });
+
+    expect(
+      screen.queryByRole("button", { name: /convert to cloze/i }),
+    ).toBeNull();
+  });
+
+  it("is not offered when Anki has named no cloze note type", async () => {
+    renderEditor(
+      BASIC_DRAFT,
+      createFakeAnkiClient({ decks: ["Default"], noteTypes: [BASIC, VOCAB] }),
+    );
+    await screen.findByRole("option", { name: "Default" });
+
+    expect(
+      screen.queryByRole("button", { name: /convert to cloze/i }),
+    ).toBeNull();
+  });
+});
+
+describe("21. what the panel is told", () => {
+  it("reports the note id once the card is in Anki", async () => {
+    const onAdded = vi.fn();
+    renderEditor(BASIC_DRAFT, anki(), { onAdded });
+
+    await addCard();
+    await screen.findByText(/added to anki/i);
+
+    expect(onAdded).toHaveBeenCalledWith(1);
   });
 });

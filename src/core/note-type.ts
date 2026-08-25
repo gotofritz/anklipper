@@ -47,6 +47,28 @@ export function createNoteType(spec: NoteTypeSpec): NoteType {
   };
 }
 
+function sameOrder(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((name, index) => name === b[index]);
+}
+
+/**
+ * Whether two readings of a note type say the same thing.
+ *
+ * The sidebar re-reads note types from Anki on open and reconciles the draft
+ * against them (M7): a user may rename a field in Anki mid-draft, and field
+ * names are the draft's keys (3.1). Order counts, because the draft renders
+ * fields in Anki's order, and so does the flavour, since the capture's is the
+ * name heuristic's guess and Anki's comes off the templates (4.6).
+ */
+export function sameNoteType(a: NoteType, b: NoteType): boolean {
+  return (
+    a.name === b.name &&
+    a.kind === b.kind &&
+    sameOrder(a.fields, b.fields) &&
+    sameOrder(a.requiredFields, b.requiredFields)
+  );
+}
+
 export function hasField(noteType: NoteType, field: string): boolean {
   return noteType.fields.includes(field);
 }

@@ -33,7 +33,16 @@ export async function pingBackground(
  */
 export type DraftStatus =
   | { readonly kind: "loading" }
-  | { readonly kind: "captured"; readonly draft: CardDraft }
+  | {
+      readonly kind: "captured";
+      readonly draft: CardDraft;
+      /**
+       * A second gesture happened while this one was still being edited
+       * (7.4). The panel asks which the user meant; nothing is replaced
+       * until they say.
+       */
+      readonly pending: CardDraft | undefined;
+    }
   | { readonly kind: "empty" }
   | { readonly kind: "unavailable"; readonly reason: string };
 
@@ -53,7 +62,13 @@ export async function loadDraft(messenger: Messenger): Promise<DraftStatus> {
       reason: `${reply.error.kind}: ${reply.error.message}`,
     };
   }
+  // Nothing can be waiting behind a draft that is not there: a capture that
+  // found the slot empty took it rather than queueing.
   return reply.value.draft === undefined
     ? { kind: "empty" }
-    : { kind: "captured", draft: reply.value.draft };
+    : {
+        kind: "captured",
+        draft: reply.value.draft,
+        pending: reply.value.pending,
+      };
 }

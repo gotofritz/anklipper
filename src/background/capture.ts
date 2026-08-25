@@ -32,17 +32,25 @@ export interface CaptureTrigger {
 }
 
 /**
- * Until M8 stores what the user chose, a capture lands on Anki's own Basic
- * with no deck. The empty deck fails validation, which is the editor's cue to
- * ask for one rather than to invent one.
+ * Until M8 stores what the user chose, a capture lands on Anki's own Basic in
+ * Anki's own default deck. Both are hardcoded here and become settings next.
+ *
+ * `Default` rather than an empty deck: every Anki collection ships with one,
+ * so a capture is addable without an edit — and if the user has renamed it,
+ * the add answers `unknown-deck` and the editor says so with the real deck
+ * list already in its selector. The note type is the name heuristic's guess
+ * (3.7) and is replaced by Anki's own descriptor the moment the sidebar can
+ * reach it (4.6).
  */
 export const FALLBACK_NOTE_TYPE = createNoteType({
   name: "Basic",
   fields: ["Front", "Back"],
 });
 
+export const FALLBACK_DECK = "Default";
+
 export const FALLBACK_DEFAULTS: GenerationDefaults = {
-  deck: "",
+  deck: FALLBACK_DECK,
   noteType: FALLBACK_NOTE_TYPE,
 };
 
@@ -59,6 +67,8 @@ export interface CaptureDeps {
   readonly scripting: ScriptingPort;
   readonly sidebar: SidebarPort;
   readonly drafts: DraftStore;
+  /** Where a capture waits when a draft is already in flight (7.4). */
+  readonly pending: DraftStore;
   readonly defaults?: GenerationDefaults;
   readonly now?: () => Date;
   /** Injected so the timeout is testable without waiting for it. */
@@ -78,8 +88,16 @@ export interface CaptureFailure {
   readonly message: string;
 }
 
+/** Which slot the capture went into (7.4). */
+export type DraftSlot = "draft" | "pending";
+
 export interface CaptureOutcome {
   readonly draft: CardDraft;
+  /**
+   * `pending` means a draft was already in flight, so this one is waiting for
+   * the user to say which they meant rather than having replaced it.
+   */
+  readonly stored: DraftSlot;
   /** What could not be read, or was read only in part (5.4). */
   readonly warnings: readonly CaptureWarning[];
   /**
@@ -232,7 +250,18 @@ async function finish(
   // The background is unloaded when idle, so the draft is durable from the
   // moment it exists — and the sidebar reads it back out rather than being
   // handed it across a gesture.
-  const saved = await deps.drafts.save(draft);
+  //
+  // One draft is edited at a time (7.4): with one already in flight this
+  // waits behind it, and the sidebar asks which the user meant. A read that
+  // failed is not a card anyone is editing, so it is replaced rather than
+  // protected.
+  const inFlight = await deps.drafts.load();
+  const stored: DraftSlot =
+    inFlight.ok && inFlight.value !== undefined ? "pending" : "draft";
+
+  const saved = await (stored === "pending" ? deps.pending : deps.drafts).save(
+    draft,
+  );
   if (!saved.ok) {
     return err({
       kind: "not-saved",
@@ -247,7 +276,7 @@ async function finish(
     deps.sidebarTimeoutMs ?? SIDEBAR_OPEN_TIMEOUT_MS,
   );
 
-  return ok({ draft, warnings: filled.warnings, sidebar });
+  return ok({ draft, stored, warnings: filled.warnings, sidebar });
 }
 
 /**
@@ -260,6 +289,8 @@ async function finish(
 export interface CaptureReport {
   readonly outcome: "captured" | "failed";
   readonly failure?: CaptureFailure;
+  /** Which slot it went into — `pending` means the user has to be asked (7.4). */
+  readonly stored?: DraftSlot;
   readonly warnings: readonly CaptureWarningKind[];
   readonly sidebar?: SidebarError;
 }
@@ -271,9 +302,10 @@ export function describeCapture(
     return { outcome: "failed", failure: result.error, warnings: [] };
   }
 
-  const { warnings, sidebar } = result.value;
+  const { warnings, sidebar, stored } = result.value;
   return {
     outcome: "captured",
+    stored,
     warnings: warnings.map((warning) => warning.kind),
     ...(sidebar.ok ? {} : { sidebar: sidebar.error }),
   };

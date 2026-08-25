@@ -1,7 +1,7 @@
 import type { CaptureWarning } from "./capture";
 import { findMalformedCloze, stripCloze } from "./cloze";
 import type { NoteType, NoteTypeKind } from "./note-type";
-import { hasField, primaryFieldOf } from "./note-type";
+import { hasField, primaryFieldOf, sameNoteType } from "./note-type";
 import type { Result } from "./result";
 import { err, ok } from "./result";
 
@@ -185,6 +185,49 @@ export function setNoteType(draft: CardDraft, noteType: NoteType): CardDraft {
     const value = carried[field] ?? "";
     fields[field] = value.trim() === "" ? (restored?.[field] ?? "") : value;
   }
+
+  return { ...draft, noteType, fields, stash };
+}
+
+/**
+ * The same note type, re-read from Anki.
+ *
+ * A user may rename or reorder a note type's fields in Anki while a draft is
+ * open, and a draft still keyed by the old names would be refused by
+ * AnkiConnect at submit — three layers from where it could be explained. The
+ * sidebar reconciles on open, and this is the reconciliation: 3.2's rule,
+ * applied to a note type that kept its name.
+ *
+ * The fresh descriptor is taken even when the field list is identical, since
+ * it also carries the flavour Anki reads off the templates (4.6) in place of
+ * the name heuristic's guess. A reading that says the same thing returns the
+ * draft itself, so a caller can tell "nothing changed" from "reconciled"
+ * without comparing note types of its own.
+ */
+export function refreshNoteType(
+  draft: CardDraft,
+  noteType: NoteType,
+): CardDraft {
+  if (noteType.name !== draft.noteType.name) return draft;
+  if (sameNoteType(noteType, draft.noteType)) return draft;
+
+  const carried: Record<string, string> = {};
+  const unmatched: Record<string, string> = {};
+  for (const [field, value] of Object.entries(draft.fields)) {
+    if (hasField(noteType, field)) carried[field] = value;
+    else if (value.trim() !== "") unmatched[field] = value;
+  }
+
+  const stash: Record<string, FieldMap> = { ...draft.stash };
+  // Under its own name, so switching away and back restores it (3.2). What
+  // was already stashed under that name stays: it belongs to this note type
+  // too, and the switch that put it there has not been undone.
+  if (Object.keys(unmatched).length > 0) {
+    stash[noteType.name] = { ...stash[noteType.name], ...unmatched };
+  }
+
+  const fields: Record<string, string> = {};
+  for (const field of noteType.fields) fields[field] = carried[field] ?? "";
 
   return { ...draft, noteType, fields, stash };
 }
