@@ -9,6 +9,13 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [0.8.0](https://github.com/gotofritz/anklipper/compare/v0.7.0...v0.8.0) (2026-08-25)
+
+
+### Features
+
+* **m8:** settings, schema migration, and a reachable endpoint ([#21](https://github.com/gotofritz/anklipper/issues/21)) ([8b9ced6](https://github.com/gotofritz/anklipper/commit/8b9ced68bd0610412b4604dac7824588b0338df1))
+
 ## [0.7.0](https://github.com/gotofritz/anklipper/compare/v0.6.0...v0.7.0) (2026-08-25)
 
 
