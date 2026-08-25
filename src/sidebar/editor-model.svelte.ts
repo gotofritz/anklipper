@@ -183,6 +183,18 @@ export function createEditorModel(deps: EditorDeps): EditorModel {
     unwritten = undefined;
     if (outstanding === undefined || done) return;
 
+    // The slot may have been handed over while this edit was waiting — the
+    // card was added, discarded, or replaced by the newer selection (7.3,
+    // 7.4). Writing then would resurrect a card the user is finished with, or
+    // overwrite the one they chose instead, so the write is conditional on
+    // the slot still holding this capture.
+    const current = await deps.drafts.load();
+    if (!current.ok) {
+      saveError = current.error;
+      return;
+    }
+    if (current.value?.createdAt !== outstanding.createdAt) return;
+
     const saved = await deps.drafts.save(outstanding);
     // Silently failing to save is the one failure the user cannot see coming:
     // everything still looks edited, and none of it is anywhere.

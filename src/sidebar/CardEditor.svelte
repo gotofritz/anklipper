@@ -177,22 +177,30 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onCancel?.();
-      return;
-    }
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       void model.submit();
     }
   }
+
+  /**
+   * Throwing the card away is deliberate and has no undo, so it is a named
+   * button and nothing else. M6 bound Escape to it as well, when the panel
+   * left it unwired and it did nothing; now that it empties the slot, a stray
+   * keypress is not how to ask for it.
+   */
+  function discard() {
+    // The outstanding edit goes with the card. The flush on unmount would
+    // otherwise race the slot being emptied.
+    model.stop();
+    onCancel?.();
+  }
 </script>
 
 <!--
-  The keydown listener is the panel's two shortcuts — Escape to cancel,
-  Ctrl+Enter to add — and every control it wraps is interactive in its own
-  right, which is what the rule is protecting.
+  The keydown listener is the panel's shortcut for adding the card, and every
+  control it wraps is interactive in its own right, which is what the rule is
+  protecting.
 -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <form class="editor" onsubmit={submit} onkeydown={onKeydown}>
@@ -369,7 +377,7 @@
     >
       Add card
     </button>
-    <button type="button" onclick={() => onCancel?.()}>Cancel</button>
+    <button type="button" onclick={discard}>Discard card</button>
   </div>
 </form>
 

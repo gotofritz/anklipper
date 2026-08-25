@@ -345,6 +345,11 @@ describe("7. a second selection while the first is being edited", () => {
     await app.capture();
     app.openSidebar();
     await screen.findByRole("option", { name: "Geography" });
+    // Typed inside the save debounce, so an edit to the card being replaced
+    // is still outstanding when the slot changes hands. Flushing it then —
+    // the editor is unmounted, which is when a flush happens — would put the
+    // replaced card back over the one the user chose.
+    await type("Back", "Paris");
 
     await app.capture(SECOND_SELECTION);
     await screen.findByText(/newer selection is waiting/i);
@@ -359,6 +364,7 @@ describe("7. a second selection while the first is being edited", () => {
     );
     const stored = await app.drafts.load();
     expect(stored.ok && stored.value?.source.title).toBe("Germany — Example");
+    expect(screen.getByLabelText("Back")).toHaveValue("");
   });
 });
 

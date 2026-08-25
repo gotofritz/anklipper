@@ -537,6 +537,44 @@ describe("persisting what the user types", () => {
     });
   });
 
+  /**
+   * The slot can be handed over while an edit is still waiting: the card was
+   * added, discarded, or replaced by the newer selection (7.3, 7.4). A write
+   * landing afterwards would resurrect a card the user is finished with, or
+   * overwrite the one they chose instead.
+   */
+  it("does not write into a slot that has been emptied", async () => {
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 50,
+    });
+
+    model.setField("Back", "Paris");
+    await drafts.clear();
+    await model.flush();
+
+    await expect(drafts.load()).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it("does not overwrite the card that took the slot", async () => {
+    const later = draftOf(BASIC, { Front: "Capital of Germany?" });
+    const newer = { ...later, createdAt: "2026-01-01T12:05:00.000Z" };
+    const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
+      debounceMs: 50,
+    });
+
+    model.setField("Back", "Paris");
+    await drafts.save(newer);
+    await model.flush();
+
+    const stored = await drafts.load();
+    expect(stored.ok && stored.value?.fields["Front"]).toBe(
+      "Capital of Germany?",
+    );
+  });
+
   it("drops an outstanding edit when it is stopped", async () => {
     const { model, drafts } = modelFor(BASIC_DRAFT, undefined, {
       debounceMs: 50,

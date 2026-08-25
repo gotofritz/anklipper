@@ -215,14 +215,27 @@ describe("5 and 6. adding the card", () => {
     expect(added(client)).toHaveLength(1);
   });
 
-  it("cancels without sending anything", async () => {
+  it("discards without sending anything", async () => {
     const client = anki();
     const { onCancel } = renderEditor(BASIC_DRAFT, client);
 
-    await fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    await fireEvent.click(screen.getByRole("button", { name: /discard/i }));
 
     expect(onCancel).toHaveBeenCalled();
     expect(added(client)).toEqual([]);
+  });
+
+  // Discarding throws the card away, and the panel has no undo. A stray key
+  // is not the way to ask for that, in the milestone whose whole subject is
+  // not losing the user's work.
+  it("does not discard on a stray Escape", async () => {
+    const { onCancel } = renderEditor();
+
+    await fireEvent.keyDown(screen.getByLabelText("Front"), {
+      key: "Escape",
+    });
+
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });
 

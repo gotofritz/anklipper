@@ -325,6 +325,17 @@ blur loses the last field. So it is flushed on two events besides the timer:
 before a submit, and on `pagehide`, which is the last thing either browser
 delivers to a sidebar that is closing.
 
+**A write happens only while the slot still holds that capture.** The
+debounce means an edit can be outstanding when the slot changes hands, and
+the flush the editor makes as it unmounts is exactly when that happens — so
+the write reads the slot first and does nothing unless it still holds the
+capture it belongs to. Otherwise a keystroke made just before **Use the new
+selection** would write the replaced card back over the one the user chose.
+
+**Discarding is a named button and nothing else.** It empties the slot, there
+is no undo, and a keyboard shortcut for that in a milestone about not losing
+work would be a mistake.
+
 **A failed add changes nothing** (7.2). The draft stands as edited, the error
 names its cause and its next action, and **Try again** sends the same draft.
 Retry is manual (7.5): an automatic queue needs ordering and conflict rules

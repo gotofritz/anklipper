@@ -447,6 +447,8 @@ Two things need eyes rather than a test:
   Firefox allows and check that nothing overflows sideways.
 - **The whole flow from the keyboard.** Tab through every control, mark a
   cloze deletion with `Ctrl+Shift+C`, and add the card with `Ctrl+Enter`.
+  Nothing discards the card from the keyboard: **Discard card** is a button,
+  because emptying the slot has no undo.
 
 ### 8. The whole flow, against a real Anki
 

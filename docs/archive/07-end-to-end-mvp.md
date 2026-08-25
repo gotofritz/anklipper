@@ -63,9 +63,20 @@ text would otherwise be. Remembering the capture rather than a flag is what
 survives the re-read that follows the add, which can still return the card
 that was just added.
 
-**Cancel now discards.** M6 left `onCancel` optional and unwired, so the
-button did nothing in the shipped panel. It hands the slot over like any other
-finish, which is the only way to be rid of a card you do not want.
+**Cancel became Discard, and Escape no longer triggers it.** M6 left
+`onCancel` optional and unwired, so the button did nothing in the shipped
+panel and Escape was bound to it harmlessly. Wiring it to empty the slot —
+the only way to be rid of a card you do not want — made a stray keypress a
+one-keystroke data loss, in the milestone whose whole subject is not losing
+the user's work. It is a named button now, and nothing else.
+
+**A write is conditional on the slot still holding its own capture.** The
+debounce means an edit can still be outstanding when the slot changes hands,
+and the flush that fires as the editor unmounts is exactly when that happens.
+Without the check, choosing **Use the new selection** with an unsaved
+keystroke would write the replaced card back over the one the user chose —
+the integration test for 7.4 fails on that, and passes with the read. The same
+check covers a discarded card and one already added.
 
 **The capture's defaults are Anki's own `Default` deck.** The plan says
 defaults are hardcoded constants here; M5 left the deck empty so validation
