@@ -242,7 +242,10 @@ directly to that branch instead of creating a new one.
   separate.
 - Minimize requested permissions. The MVP ceiling is `contextMenus`,
   `storage`, `activeTab`, `scripting`, the target browser's sidebar
-  permission, and the host permission `http://127.0.0.1:8765/*`.
+  permission, and the host permission `http://127.0.0.1:8765/*` — plus, from
+  M8, the *optional* host permissions `http://127.0.0.1/*` and
+  `http://localhost/*`, which make the configurable endpoint reachable and
+  are granted at install on neither browser.
 - On Firefox MV3 a declared host permission is not granted at install — check
   it at runtime and request it from a user gesture.
 - Adding anything beyond that list requires a justification in the subplan

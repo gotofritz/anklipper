@@ -446,6 +446,32 @@ payload: `describeAnkiConnection` reports whether one is configured and never
 its value, and the settings form shows it as a password field. It is a
 credential for a service that can delete a collection.
 
+**The endpoint may name only this machine.** `readSettings` degrades anything
+else to the default and `validateSettings` refuses it, because the manifest
+offers optional host permissions for loopback and nothing else — so an endpoint
+elsewhere is one the browser would refuse anyway, and refusing it here is the
+difference between naming the mistake and a failure nobody can diagnose. It is
+also where P6's "nothing leaves this machine" stops being a promise about
+intentions: no setting can point this extension at a remote server.
+
+**A configured port needs a permission, and it is asked for from the Save
+press.** The manifest declares `http://127.0.0.1:8765/*` — the add-on's own
+default — and offers the other loopback ports as **optional** host
+permissions, granted at install on neither browser.
+`hostPermissionFor(endpoint)` in `src/platform/permissions.ts` turns the
+endpoint into the pattern to ask about, and it is used two ways: the adapter
+checks it before every call, so a port the extension cannot reach answers
+`permission-missing` rather than `anki-not-running` — a cause with a fix
+rather than one that sends the user to start an Anki that is already running —
+and the options page *requests* it. The request is made synchronously inside
+the Save press, before anything is awaited, because Firefox refuses one made
+outside a user input handler; it is unconditional for the same reason, since
+checking first would put an await in front of asking. Already granted resolves
+without a prompt. A refusal does not throw the setting away — it is the user's
+choice — but the form says the browser has not allowed it yet. **The first-run
+permission flow itself is M9's** (9.6); this is only the options page keeping
+its own setting honest.
+
 **The adapter is configured from the settings on every call.**
 `src/anki/from-settings.ts` turns a `Settings` into an `AnkiClientConfig` and
 builds an `AnkiClient` per call, so the endpoint, the timeout, and the key the
@@ -711,7 +737,14 @@ justification in the subplan that adds it.
 | `contextMenus` | The **Create Anki Card** entry (M5). |
 | `storage` | Settings, what is remembered, and the draft, since the background is unloaded when idle. |
 | `sidePanel` | Chrome's sidebar. Firefox needs no permission for its own. |
-| `http://127.0.0.1:8765/*` | The local AnkiConnect. The only host contacted. |
+| `http://127.0.0.1:8765/*` | The local AnkiConnect, at the add-on's own default port. The only host contacted. |
+
+One **optional** host permission set, added at M8 and granted at install on
+neither browser:
+
+| Optional permission | Why |
+|---------------------|-----|
+| `http://127.0.0.1/*`, `http://localhost/*` | AnkiConnect's `webBindAddress` and `webBindPort` are the user's, so the endpoint is a setting (M8) — and a port the manifest does not name is one the browser will not let the extension reach. Asked for from the options page's Save press, for the one port that was configured. Loopback only: `readSettings` refuses any other host, so the setting and the permission cannot disagree. |
 
 **Never `<all_urls>`.** `activeTab` plus `scripting` on a user gesture covers
 the extraction this extension needs.
@@ -749,6 +782,7 @@ value (8.5a). It is stored in `storage.local` alongside the other settings,
 shown as a password field, and never echoed back by any error copy — a test
 pins each of those.
 
-The endpoint is a setting from M8, and the manifest's host permission is not:
-the extension can only reach `http://127.0.0.1:8765/*` whatever is configured,
-so a mistyped or malicious endpoint cannot make it talk to anything else.
+The endpoint is a setting from M8, and it is bounded twice over: the schema
+refuses any host but `127.0.0.1` and `localhost`, and the manifest offers host
+permissions for nothing else — so neither a mistyped setting nor a written one
+can make this extension talk to anything off the machine.

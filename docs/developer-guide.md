@@ -8,8 +8,9 @@ For what the extension does and how to use it, see the
 
 ## Where things stand
 
-M7 has landed, and the flow works end to end: select text, choose **Create
-Anki Card**, edit the card in the sidebar, add it, and it is in Anki.
+M8 has landed. The flow works end to end — select text, choose **Create Anki
+Card**, edit the card in the sidebar, add it, and it is in Anki — and what it
+starts from is now the user's, not a constant.
 
 Underneath: the toolchain and CI are green (M1), the extension has its
 skeleton (M2) — three contexts talking over a typed message channel, every
@@ -25,8 +26,17 @@ the card and offers a retry, a successful one clears the slot and says so,
 and a second selection made while a card is open waits and asks rather than
 overwriting it.
 
-Still to come: settings in place of M7's hardcoded deck and note type (M8),
-and onboarding for the host permission (M9).
+M8 added settings. `src/core/settings.ts` is the schema — versioned from the
+first release, validated on every read, degrading key by key so a bad stored
+value cannot stop the extension starting; `src/core/settings-migrations.ts` is
+the runner that goes in front of it; `src/platform/settings-store.ts` and
+`remembered-store.ts` put both over `storage.local` under separate keys; and
+`src/options/` is the form, built on M6's view-model pattern and reusing its
+components. The AnkiConnect endpoint, timeout, and optional API key come from
+there too, and the deck a card went into is remembered for the next capture.
+
+Still to come: onboarding for the host permission, and connection diagnostics
+(M9).
 
 `docs/initial-context.md` is the authoritative description of that
 architecture. Read it before changing a layer boundary, a message shape, or a
@@ -70,9 +80,9 @@ compiling, and has its own dev and build scripts.
 ## How the code is organised
 
 Boundaries are enforced by ports and adapters. Card generation and the Svelte
-UI depend on interfaces — `AnkiClient`, `DraftStore`, `SettingsStore` — never
-on concrete AnkiConnect calls or `browser.*`. Every port ships an in-memory
-fake, and that is what tests run against.
+UI depend on interfaces — `AnkiClient`, `DraftStore`, `SettingsStore`,
+`RememberedStore` — never on concrete AnkiConnect calls or `browser.*`. Every
+port ships an in-memory fake, and that is what tests run against.
 
 - **Card model** — `CardDraft` and its transitions, in `src/core/`. Pure
   TypeScript, no browser, no network. Cloze markup lives here too: deletions
@@ -85,14 +95,17 @@ fake, and that is what tests run against.
   components that render it and hand back intents. No AnkiConnect protocol
   logic, and no `browser.*`.
 - **AnkiConnect adapter** — the only place that knows the wire format.
-- **Settings/storage** — configuration and persistence.
+- **Settings/storage** — the schema and its migrations in `src/core/`, the
+  stores in `src/platform/`, the options page in `src/options/`. Validated on
+  read and degraded key by key: a settings bug must not brick the extension.
 
 On disk:
 
-- `src/entrypoints/` — background, content script, and the sidebar. WXT reads
-  this directory to generate the manifest. Entrypoints stay thin: they build
-  the adapters and hand them to a module under `src/`, because entrypoints are
-  exempt from the TDD gate and logic parked there escapes testing.
+- `src/entrypoints/` — background, content script, the sidebar, and the options
+  page. WXT reads this directory to generate the manifest. Entrypoints stay
+  thin: they build the adapters and hand them to a module under `src/`, because
+  entrypoints are exempt from the TDD gate and logic parked there escapes
+  testing.
 - `src/platform/` — the only place `browser.*` is reached. One module per
   port: an interface plus its real implementation. In-memory fakes live in
   `src/platform/fakes/`.
@@ -100,12 +113,16 @@ On disk:
   registry. Depends on ports, never on the browser.
 - `src/background/`, `src/content/`, `src/sidebar/` — what each context does,
   outside the entrypoint that starts it.
-- `src/core/` — framework-independent domain code: the `Result` type, and the
-  card model — `note-type.ts`, `draft.ts`, `cloze.ts`, `validate.ts`,
-  `capture.ts`, `generate.ts`. `src/core/ports/` declares the `AnkiClient`, `DraftStore`,
-  and `SettingsStore` interfaces, with an in-memory fake for each under
-  `ports/fakes/`. The fakes can be told to fail, so a consumer can test its
-  error path as well as its happy one.
+- `src/core/` — framework-independent domain code: the `Result` type, the card
+  model — `note-type.ts`, `draft.ts`, `cloze.ts`, `validate.ts`, `capture.ts`,
+  `generate.ts`, `source-fields.ts` — and the settings schema,
+  `settings.ts` with `settings-migrations.ts`. `src/core/ports/` declares the
+  `AnkiClient`, `DraftStore`, `SettingsStore`, and `RememberedStore`
+  interfaces, with an in-memory fake for each under `ports/fakes/`. The fakes
+  can be told to fail, so a consumer can test its error path as well as its
+  happy one.
+- `src/options/` — the settings page: one view-model over the ports and the
+  form that renders it, reusing `src/sidebar/`'s `TagEditor` and `error-copy`.
 - `src/manifest/` — the permission ceiling and the pinned extension identity,
   imported by `wxt.config.ts` and pinned by a test.
 - `src/` is the alias root. `@/…` resolves to it identically in the build, in
@@ -461,8 +478,8 @@ and 5 above.
 
 1. **A real card.** Select a sentence, **Create Anki Card**, fill in `Back`,
    press **Add card**. Expect *Added to Anki.* and the card in the collection.
-   The deck is `Default` and the note type `Basic` until M8 makes them
-   settings.
+   The deck and note type are whatever the settings say — `Default` and
+   `Basic` on a fresh profile.
 2. **A real cloze card.** Capture again and press **Convert to cloze**, which
    moves the selection into `Text`. Select a word, press `Ctrl+Shift+C`,
    select another, press it again. Add the card, then open it in Anki's
@@ -486,6 +503,81 @@ and 5 above.
    editor. **Keep this card** drops the new one; **Use the new selection**
    replaces the card being edited. Both are one click and neither happens on
    its own.
+
+### 9. Settings
+
+M8's done-when criteria. The automated suite covers the schema, the
+migrations, the stores, the form, and the whole flow with AnkiConnect mocked;
+what a real browser adds is whether the storage survives a restart and whether
+the permission prompt behaves.
+
+Open the settings from the sidebar's **Settings** button, or from
+`about:addons` → Anklipper → the gear → **Preferences**. It opens in a tab.
+
+1. **They survive a browser restart.** Change the deck and add a default tag,
+   save, quit Firefox entirely, and start it again with the same profile.
+   Capture something: the card starts on the deck you chose, with the tag.
+   (`.wxt/firefox-data` is the profile — deleting it resets everything,
+   including the extension's UUID.)
+2. **The last-used deck beats the default, and survives a reset.** Add a card
+   to a different deck than the configured one. Capture again: the new card
+   starts on the deck you just used. Press **Reset to defaults** and capture
+   once more — still that deck, because it is remembered rather than
+   configured (8.5). Check it directly if you like:
+
+   ```js
+   await browser.storage.local.get(["settings", "remembered"])
+   ```
+
+3. **Corrupt settings cannot stop a capture.** From the background console:
+
+   ```js
+   await browser.storage.local.set({ settings: "wiped" })
+   ```
+
+   Then capture. The card is made, on `Default` and `Basic`. This is 8.2, and
+   it is the one failure mode that would otherwise reach a user as an
+   extension that does nothing.
+4. **A key nothing here owns survives a save.** Write one, save the form, and
+   read it back:
+
+   ```js
+   await browser.storage.local.set({
+     settings: { ...(await browser.storage.local.get("settings")).settings,
+                 futureThing: "keep me" },
+   })
+   ```
+
+   It is still there afterwards, alongside a bumped `version`.
+5. **The endpoint, and the permission it needs.** In AnkiConnect's config set
+   `webBindPort` to something else, restart Anki, and put the matching address
+   in the settings. Saving should raise Firefox's permission prompt for that
+   origin — the manifest declares only the default port and offers the rest of
+   loopback as optional. Accept it and the deck list fills; decline it and the
+   form says the browser has not allowed it, the setting is still saved, and
+   pressing **Save settings** again asks once more. With the permission
+   missing, the sidebar reports *Anklipper has not been allowed to reach
+   Anki*, not *Anki is not running*.
+6. **The address is refused if it is not local.** Type
+   `http://anki.example.test:8765` and save. Nothing is stored and the form
+   says why. This is the setting half of the promise the README makes.
+7. **The API key never leaves the store.** Set one, then check that nothing
+   writes it out:
+
+   ```js
+   anklipper.diagnostics()   // apiKeyConfigured: true, and no key
+   await anklipper.survey()  // same
+   ```
+
+   The field itself is a password input, so it is not on screen either.
+8. **The form from the keyboard.** Tab through every control, including the
+   tag box, and save with Enter. jsdom has no layout engine, so the narrow
+   width is worth an eye too — the page is capped at 40rem and should not
+   scroll sideways.
+
+The development harness is built from the settings as of the background's last
+start, so change an endpoint and reload the extension before using
+`anklipper.survey()` against it.
 
 ## Plans and documentation
 

@@ -36,6 +36,15 @@ user gesture covers extraction. Anything beyond this list needs a justification
 in the subplan that adds it. On Firefox MV3 a declared host permission is not
 granted at install; check and request it at runtime (M2).
 
+**Added at M8, with its justification in that subplan:** the *optional* host
+permissions `http://127.0.0.1/*` and `http://localhost/*`. AnkiConnect's own
+`webBindAddress` and `webBindPort` are the user's, so the endpoint is a
+setting — and a port the manifest does not name is one the browser will not let
+the extension reach. Optional, so the install-time set is unchanged; loopback
+only, and the settings schema refuses any other host, so no setting can point
+the extension off the machine; and asked for one port at a time, from a
+gesture.
+
 **AnkiConnect.** Its default config allowlists no extension origin. The plan
 assumed that made the first-run state a rejected one, with the add-on's
 `requestPermission` handshake as the way out (P9). **M4's manual pass against a

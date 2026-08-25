@@ -81,6 +81,30 @@ of controls. `manifest.open_in_tab` in the entrypoint's HTML, pinned by
 `tests/manifest/generated-manifest.test.ts` along with the fact that the page
 costs no new permission.
 
+**The permission ceiling gained one optional entry, and here is the
+justification `AGENTS.md` asks for.** "The endpoint is configurable because the
+add-on's own `webBindAddress` and `webBindPort` are" is a deliverable that does
+not work on its own: the manifest declared `http://127.0.0.1:8765/*` and
+nothing else, so a user who moved AnkiConnect's port would have had their
+request blocked by the browser and reported as `anki-not-running` — a cause
+whose fix is "start Anki", offered to someone whose Anki is running. So the
+manifest now also carries `optional_host_permissions` for
+`http://127.0.0.1/*` and `http://localhost/*`.
+
+Three things bound it. They are **optional**, so nothing is granted at install
+on either browser and the extension's install-time permission set is exactly
+what it was. They are **loopback only**, and `readSettings` refuses an endpoint
+on any other host, so the setting and the permission cannot disagree and no
+setting can point this extension at a remote server — which is P6 becoming a
+manifest rather than an intention. And they are asked for **one at a time**,
+for the port the user actually typed, from the Save press.
+
+The adapter's permission check moved with it: `hostPermissionFor(endpoint)`
+rather than the constant, so `permission-missing` means what it says. The
+first-run permission flow is still M9's (9.6); this is the options page keeping
+its own setting honest, which is the narrowest version of that work that makes
+M8's deliverable true.
+
 **No diagnostics view — that is M9.** Test 11 says "diagnostics output and
 error payloads never contain the key", and what exists to assert against is
 M4's `describeAnkiConnection` and the adapter's own error payloads. Both are
