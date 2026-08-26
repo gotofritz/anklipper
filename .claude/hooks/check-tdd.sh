@@ -36,12 +36,15 @@ case "/$REL/" in
 esac
 
 # --- config, ambient types, barrels, and thin entrypoints -------------------
+# `preview/` is an entrypoint by another name: it mounts a component against
+# the port fakes so the skin can be looked at. Same rule applies — keep
+# behaviour out of it, or it belongs in `src/` with a test.
 case "$BASE" in
   *.config.ts | *.config.js | *.setup.ts | *.types.ts | types.ts | index.ts)
     exit 0 ;;
 esac
 case "/$REL/" in
-  */entrypoints/*) exit 0 ;;
+  */entrypoints/* | */preview/*) exit 0 ;;
 esac
 
 # --- generated, vendored, and tooling trees ---------------------------------

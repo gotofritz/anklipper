@@ -26,6 +26,27 @@ describe("origin", () => {
     );
   });
 
+  // The colophon carries this. A version typed into the source would be the
+  // version at the time somebody last remembered to type it, so it comes off
+  // the manifest the build generated.
+  it("reports the running extension's version from its manifest", () => {
+    vi.spyOn(browser.runtime, "getManifest").mockReturnValue({
+      manifest_version: 3,
+      name: "Anklipper",
+      version: "9.9.9",
+    } as ReturnType<typeof browser.runtime.getManifest>);
+
+    expect(createOrigin().extensionVersion()).toBe("9.9.9");
+  });
+
+  it("says nothing rather than guessing when the manifest cannot be read", () => {
+    vi.spyOn(browser.runtime, "getManifest").mockImplementation(() => {
+      throw new Error("no manifest here");
+    });
+
+    expect(createOrigin().extensionVersion()).toBeUndefined();
+  });
+
   // Firefox mints the uuid at install time, so the helper has to read it
   // every time rather than capture it once.
   it("follows the installation it is running in, rather than a baked-in value", () => {

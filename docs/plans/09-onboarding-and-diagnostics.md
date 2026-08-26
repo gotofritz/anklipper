@@ -2,6 +2,26 @@
 
 Index: `00-plan.md`. Depends on: M8. Blocks: M10.
 
+> **Partly landed elsewhere.** M10 went ahead of this milestone, and M13
+> took the pieces 1.0.0 could not ship without. Already built, do not build
+> again:
+>
+> - **9.3** — every M4 cause renders its own cause and fix, in
+>   `src/sidebar/error-copy.ts`, keyed by the taxonomy so a new cause without
+>   copy is a type error.
+> - **9.6, 9.7** — the host permission is asked for from a click, in the
+>   editor, and `permission-missing` is the one cause that gets that button
+>   instead of a **Try again** that could never work.
+> - **The connection indicator** — the status strip's marker distinguishes
+>   unchecked (`RT/--`) from connected (`RT/OK`) from failed (`RT/NO`).
+> - **9.5, README** — Firefox ships first, and the README carries setup, the
+>   AnkiConnect step, and installation.
+>
+> Still this milestone's: **9.2a** (the manual `webCorsOriginList` fallback
+> with the running origin filled in and copyable), the **diagnostics view**,
+> and the API-key field surfaced on demand. Re-read the deliverables below
+> against what is already there before writing any of it.
+
 ## Goal
 
 Make the extension usable by someone who did not build it. Until this
@@ -29,23 +49,23 @@ editor work — Anki-editor parity is M10.
 
 ## Deliverables
 
-* First-run flow, in order: request the host permission, probe, trigger the
+- First-run flow, in order: request the host permission, probe, trigger the
   `requestPermission` handshake, tell the user to approve the dialog in Anki,
   then re-probe until it connects — no browser reload, no Anki restart.
-* Manual fallback screen with the copyable origin and the exact JSON, reached
+- Manual fallback screen with the copyable origin and the exact JSON, reached
   from the dead end in 9.7 and from diagnostics.
-* An **API key** field, surfaced when the add-on reports a key is required
+- An **API key** field, surfaced when the add-on reports a key is required
   rather than shown to everyone by default.
-* Diagnostics view: current cause, the fix, the endpoint in use, and Anki's
+- Diagnostics view: current cause, the fix, the endpoint in use, and Anki's
   reported version when reachable.
-* Panel connection indicator that distinguishes "not checked" from "checked
+- Panel connection indicator that distinguishes "not checked" from "checked
   and failing".
-* Fast repeated creation: after a successful add, the panel returns to a
+- Fast repeated creation: after a successful add, the panel returns to a
   ready state with the deck retained.
-* Several cards from one page without reopening or re-navigating.
-* Success and error feedback consistent with M6's cause-plus-action rule.
-* Keyboard shortcuts documented in-extension.
-* `README.md`: setup, the AnkiConnect step, and troubleshooting.
+- Several cards from one page without reopening or re-navigating.
+- Success and error feedback consistent with M6's cause-plus-action rule.
+- Keyboard shortcuts documented in-extension.
+- `README.md`: setup, the AnkiConnect step, and troubleshooting.
 
 ## Tests to write first
 
@@ -68,22 +88,22 @@ editor work — Anki-editor parity is M10.
 
 ## Done when
 
-* A clean browser profile with an unconfigured AnkiConnect can be brought to
+- A clean browser profile with an unconfigured AnkiConnect can be brought to
   a working state using only in-extension guidance and the Anki dialog —
   verified by doing it, not by reading the code.
-* The same, for a user who previously declined and is now in
+- The same, for a user who previously declined and is now in
   `ignoreOriginList`: the manual fallback gets them working.
-* Closing Anki mid-session produces a message that names the cause; reopening
+- Closing Anki mid-session produces a message that names the cause; reopening
   and re-checking recovers without losing a draft.
-* `README.md` and `docs/initial-context.md` reflect shipped behaviour.
+- `README.md` and `docs/initial-context.md` reflect shipped behaviour.
 
 ## Risks
 
-* **Guidance drifting from the taxonomy.** Copy lives with the cause it
+- **Guidance drifting from the taxonomy.** Copy lives with the cause it
   explains (M6, 6.5), so a new cause cannot ship without its guidance.
-* **Origin changes.** The pinned identity from M2 is what keeps 9.2 truthful
+- **Origin changes.** The pinned identity from M2 is what keeps 9.2 truthful
   across reloads; if the origin changes, every user's allowlist entry breaks.
   On Firefox this also means a reinstall gives a new UUID — onboarding must
   be re-enterable (9.4) precisely because that happens.
-* **Onboarding that cannot be re-entered.** Users clear config and change
+- **Onboarding that cannot be re-entered.** Users clear config and change
   machines. 9.4 exists so the path is never one-shot.

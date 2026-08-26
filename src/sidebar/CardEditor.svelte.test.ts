@@ -320,6 +320,111 @@ describe("7. a port that refuses", () => {
   });
 });
 
+// 9.6/9.7. Firefox MV3 grants no host permission at install, so this is the
+// state a brand-new install is in — and "Try again" there is a button that
+// cannot ever succeed, because nothing about pressing it grants anything.
+describe("7a. a host permission that was never granted", () => {
+  const missing: AnkiError = {
+    kind: "permission-missing",
+    message: "no host permission for http://127.0.0.1:8765",
+  };
+
+  it("offers to ask for it rather than a retry that cannot work", async () => {
+    const client = anki();
+    renderEditor(BASIC_DRAFT, client, { grantAccess: async () => true });
+    await screen.findByRole("option", { name: "Default" });
+    client.failWith(missing);
+
+    await addCard();
+
+    expect(
+      await screen.findByRole("button", { name: /allow access to anki/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /try again/i })).toBeNull();
+  });
+
+  it("adds the card once the browser has granted it", async () => {
+    const client = anki();
+    const grantAccess = vi.fn(async () => {
+      // What the browser does on approval: the next call is no longer refused.
+      client.failWith(undefined);
+      return true;
+    });
+    renderEditor(BASIC_DRAFT, client, { grantAccess });
+    await screen.findByRole("option", { name: "Default" });
+    client.failWith(missing);
+    await addCard();
+
+    await fireEvent.click(
+      await screen.findByRole("button", { name: /allow access to anki/i }),
+    );
+
+    expect(grantAccess).toHaveBeenCalled();
+    await vi.waitFor(() => expect(added(client)).toHaveLength(1));
+  });
+
+  it("still offers the ask when the browser was declined", async () => {
+    const client = anki();
+    renderEditor(BASIC_DRAFT, client, { grantAccess: async () => false });
+    await screen.findByRole("option", { name: "Default" });
+    client.failWith(missing);
+    await addCard();
+
+    await fireEvent.click(
+      await screen.findByRole("button", { name: /allow access to anki/i }),
+    );
+
+    expect(added(client)).toHaveLength(0);
+    expect(
+      await screen.findByRole("button", { name: /allow access to anki/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("asks for it when the lists are what the refusal blocked", async () => {
+    const client = anki();
+    client.failWith(missing);
+    renderEditor(BASIC_DRAFT, client, { grantAccess: async () => true });
+
+    expect(
+      await screen.findByRole("button", { name: /allow access to anki/i }),
+    ).toBeInTheDocument();
+  });
+
+  // A host with no way to ask — Chrome, where the permission is granted at
+  // install, or a test that did not wire one — must not render a dead button.
+  it("falls back to the retry when nothing can ask on its behalf", async () => {
+    const client = anki();
+    renderEditor(BASIC_DRAFT, client);
+    await screen.findByRole("option", { name: "Default" });
+    client.failWith(missing);
+
+    await addCard();
+
+    expect(
+      await screen.findByRole("button", { name: /try again/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /allow access to anki/i }),
+    ).toBeNull();
+  });
+
+  it("leaves every other cause on the retry", async () => {
+    const client = anki();
+    renderEditor(BASIC_DRAFT, client, { grantAccess: async () => true });
+    await screen.findByRole("option", { name: "Default" });
+    client.failWith({ kind: "anki-not-running", message: "nothing answered" });
+
+    await addCard();
+
+    expect(
+      await screen.findByRole("button", { name: /try again/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /allow access to anki/i }),
+    ).toBeNull();
+  });
+});
+
 describe("8. the deck and note-type lists", () => {
   it("says it is still asking Anki", () => {
     renderEditor(BASIC_DRAFT, pendingClient());

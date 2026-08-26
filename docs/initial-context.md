@@ -70,7 +70,7 @@ so the surface a fake has to cover stays small.
 | `tabs.ts` | `TabsPort` | `browser.tabs.query` |
 | `context-menus.ts` | `ContextMenusPort` | `browser.contextMenus` |
 | `permissions.ts` | `PermissionsPort` | `browser.permissions` |
-| `origin.ts` | `OriginPort` | `runtime.getURL` |
+| `origin.ts` | `OriginPort` | `runtime.getURL`, `runtime.getManifest` |
 | `sidebar.ts` | `SidebarPort` | `sidebarAction` **or** `sidePanel` |
 | `scripting.ts` | `ScriptingPort` | `browser.scripting.executeScript` |
 | `commands.ts` | `CommandsPort` | `browser.commands.onCommand` |
@@ -645,7 +645,17 @@ reply shape if a different AnkiConnect version ever needs it.
 What is left is the loopback host permission, which Firefox MV3 does not grant
 at install — the user grants it at runtime, from a user gesture (2.7). Until
 they do, every operation answers `permission-missing` before touching the
-network. That is the whole of onboarding, and M9 owns the flow.
+network. That is the whole of onboarding.
+
+The gesture is a button, and it lives in the editor rather than the panel,
+because `permissions.request` is refused outside a user input handler and only
+the click that renders under the refusal is one. `permission-missing` is the
+single cause that renders **Allow access to Anki** instead of **Try again**
+(9.7): every other cause is fixed by trying again, and this one never is. The
+entrypoint records the endpoint each `hasHostPermission` check was made
+against, so the handler can call `permissions.request` synchronously rather
+than spending the gesture on a settings read. Declined is an answer, not an
+error — the message and the button both stand.
 
 `"*"` in `webCorsOriginList` is never suggested. Web pages are the one class
 CORS does constrain, so widening the list is precisely how a site the user

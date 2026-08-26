@@ -1,0 +1,745 @@
+/* ============================================================================
+   anklipper — tDR / Pho-ku skin
+   Drop in as: src/entrypoints/sidepanel/tdr.css
+   Import from main.ts:  import "./tdr.css";
+
+   WHY EVERY SELECTOR STARTS WITH #app
+   Svelte scopes each component's own CSS as `fieldset.svelte-hash` — specificity
+   (0,1,1) — which beats a bare `fieldset` (0,0,1). Prefixing with the mount
+   point's id gives (1,0,1) and wins without a single `!important` and without
+   touching the components' own <style> blocks.
+   ========================================================================== */
+
+/* ---- 00 fonts -------------------------------------------------------------
+   MV3's CSP blocks fonts.googleapis.com. Download the woff2 files and put them
+   in public/fonts/ (wxt copies public/ to the bundle root).
+   Archivo variable carries the width axis, which is what makes the display type
+   look extended rather than merely bold.
+   ------------------------------------------------------------------------- */
+@font-face {
+  font-family: "Archivo";
+  src: url("/fonts/Archivo-Variable.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/fonts/IBMPlexMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/fonts/IBMPlexMono-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+/* ---- 01 tokens ---------------------------------------------------------- */
+:root {
+  --ink: #0a0a0c;
+  --paper: #e4e5e8;
+  --white: #fff;
+  --chrome: #cfd2d8;
+  --magenta: #d6008a;
+  --cyan: #00e0f0;
+  --acid: #f5d400;
+  --grey: #4a4a52;
+
+  /* the components already read these three */
+  --line: #0a0a0c;
+  --problem: #d6008a;
+  --duplicate: #f5d400;
+
+  --sans: "Archivo", Helvetica, Arial, sans-serif;
+  --mono: "Plex Mono", ui-monospace, monospace;
+
+  --rule: 2px solid var(--ink);
+  --rule-heavy: 3px solid var(--ink);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+}
+
+/* ---- 02 shell ---------------------------------------------------------- */
+#app {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink);
+  background: var(--paper);
+  min-height: 100vh;
+}
+
+#app main {
+  padding: 0 10px 0;
+}
+
+#app a {
+  color: var(--magenta);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+#app a:hover {
+  color: var(--ink);
+  background: var(--cyan);
+}
+
+/* Masthead. The negative block is the whole trick: black bar, extended 900,
+   tight tracking, a mono kicker above it. */
+#app .top {
+  position: relative;
+  margin: 0 -10px 0;
+  padding: 10px 10px 8px;
+  background: var(--ink);
+  border-bottom: 6px solid var(--ink);
+  align-items: stretch;
+}
+
+#app .top::before {
+  content: "00 — CLIP／カード生成";
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font: 600 9px/1 var(--mono);
+  letter-spacing: 0.24em;
+  color: var(--cyan);
+}
+
+#app .top h1 {
+  margin: 16px 0 0;
+  font-size: 40px;
+  line-height: 0.9;
+  font-weight: 900;
+  font-stretch: 125%;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  color: #f2f2f4;
+}
+
+#app .top h1::after {
+  content: "TEXT→ANKI ／ NON-STANDARD APPARATUS";
+  display: block;
+  margin-top: 5px;
+  font: 400 9px/1 var(--mono);
+  letter-spacing: 0.14em;
+  color: #9a9ca3;
+}
+
+/* Settings — the one vertical-set element, tDR's favourite move. */
+#app .top > button {
+  align-self: stretch;
+  width: 46px;
+  border: none;
+  border-left: 2px solid #f2f2f4;
+  background: var(--magenta);
+  color: #fff;
+  font: 600 9px/1 var(--mono);
+  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#app .top > button:hover {
+  background: var(--cyan);
+  color: var(--ink);
+}
+
+/* Status line + hazard stripe, both from the existing role="status" p. */
+#app main > p[role="status"] {
+  position: relative;
+  margin: 0 -10px 12px;
+  padding: 6px 10px 6px 26px;
+  background: var(--cyan);
+  border-bottom: var(--rule);
+  font: 600 10px/1.4 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#app main > p[role="status"]::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  background: var(--ink);
+  border-radius: 50%;
+  animation: ak-blip 1.6s steps(1) infinite;
+}
+
+@keyframes ak-blip {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  61%,
+  100% {
+    opacity: 0.15;
+  }
+}
+
+/* Panel.svelte renders the marker; it used to be a fixed `content: "RT/OK"`
+   here, which claimed a connection the panel had not made. */
+#app main > p[role="status"] .serial {
+  float: right;
+  opacity: 0.55;
+}
+
+/* ---- 03 controls, globally --------------------------------------------- */
+#app button,
+#app select,
+#app input,
+#app textarea {
+  font-family: var(--mono);
+  border-radius: 0;
+}
+
+#app button {
+  border: var(--rule);
+  background: var(--white);
+  color: var(--ink);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#app button:hover:not(:disabled) {
+  background: var(--acid);
+}
+
+#app button:disabled {
+  color: #8d9098;
+  border-color: #8d9098;
+  background: var(--chrome);
+  cursor: not-allowed;
+}
+
+#app select,
+#app input,
+#app textarea {
+  border: var(--rule);
+  background: var(--white);
+  padding: 5px 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  width: 100%;
+  min-width: 0;
+}
+
+#app select {
+  appearance: none;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 6px 24px 6px 6px;
+  /* the chevron `appearance: none` takes away */
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 12px,
+    calc(100% - 9px) 12px;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+#app :is(input, select, textarea, button, [contenteditable]):focus-visible {
+  outline: 2px solid var(--magenta);
+  outline-offset: 1px;
+}
+
+/* ---- 04 landing area (LandingArea.svelte) ------------------------------ */
+#app fieldset {
+  border: var(--rule);
+  background: var(--white);
+  padding: 0;
+  margin: 0 0 14px;
+}
+
+#app legend {
+  margin-left: 0;
+  padding: 4px 8px;
+  background: var(--ink);
+  color: #fff;
+  font: 400 10px/1.4 var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* the numeric labels, keyed off ids the components already render */
+#app fieldset:has(#landing) legend::before {
+  content: "01 ";
+}
+
+#app fieldset:has(#new-tag) legend::before {
+  content: "06 ";
+}
+
+#app fieldset:has(#cloze-ordinal) legend::before {
+  content: "04B ";
+}
+
+#app #landing {
+  border: none;
+  border-bottom: var(--rule);
+  padding: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+#app fieldset:has(#landing) > .quiet {
+  margin: 0;
+  padding: 6px 8px;
+  border-bottom: var(--rule);
+  background: #edeef1;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: #3a3a40;
+}
+
+#app fieldset:has(#landing) > .row {
+  margin: 0;
+  padding: 8px;
+  gap: 4px;
+}
+
+#app label[for="landing-target"] {
+  font: 600 10px/2 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Add to field is the primary of the pair, so it takes the black. */
+#app fieldset:has(#landing) .row button:first-of-type {
+  background: var(--ink);
+  color: #fff;
+}
+
+#app fieldset:has(#landing) .row button:first-of-type:hover:not(:disabled) {
+  background: var(--magenta);
+  border-color: var(--magenta);
+}
+
+/* ---- 05 pickers (Picker.svelte) ---------------------------------------- */
+#app .picker {
+  gap: 0;
+  margin-bottom: 14px;
+}
+
+#app .picker > label:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  border-bottom: var(--rule-heavy);
+  padding-bottom: 2px;
+  margin-bottom: 6px;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 800;
+  font-stretch: 118%;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+#app .picker:has(#deck) > label:first-child::before {
+  content: "02";
+}
+
+#app .picker:has(#note-type) > label:first-child::before {
+  content: "03";
+}
+
+#app .picker > label:first-child::before {
+  font: 400 10px/1.6 var(--mono);
+  letter-spacing: 0.18em;
+}
+
+/* the deck is the one field the user changes most, so it is the acid one */
+#app #deck {
+  background-color: var(--acid);
+}
+
+/* filter labels are said by the mono placeholder line instead */
+#app .picker label.quiet {
+  font: 400 9px/1.6 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--grey);
+  margin-top: 4px;
+}
+
+#app .picker input[type="search"] {
+  border-top: none;
+  font-size: 10px;
+  padding: 4px 6px;
+}
+
+/* ---- 06 format toolbar (FormatToolbar.svelte) -------------------------- */
+#app .toolbar {
+  margin-bottom: 14px;
+}
+
+#app .toolbar::before {
+  content: "04 FORMAT";
+  display: block;
+  border-bottom: var(--rule-heavy);
+  padding-bottom: 2px;
+  font: 400 10px/1.6 var(--mono);
+  letter-spacing: 0.18em;
+}
+
+#app .toolbar .row {
+  gap: 3px;
+}
+
+#app .toolbar .row > button {
+  position: relative;
+  flex: 1 1 0;
+  padding: 7px 0;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+#app .toolbar .row > button:hover {
+  background: var(--cyan);
+}
+
+/* remove-formatting is a negation, so it reads as one */
+#app .toolbar .row > button:last-of-type {
+  background: var(--ink);
+  color: #fff;
+}
+
+#app .toolbar .row > button:last-of-type:hover {
+  background: var(--magenta);
+}
+
+/* the pressed bar — no markup needed, aria-pressed is already there */
+#app .toolbar button[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 5px;
+  background: var(--magenta);
+}
+
+/* ---- 07 cloze (ClozeControls.svelte) ----------------------------------- */
+#app fieldset:has(#cloze-ordinal) {
+  border-color: var(--magenta);
+  background: #ffe9f6;
+}
+
+#app fieldset:has(#cloze-ordinal) legend {
+  background: var(--magenta);
+}
+
+#app fieldset:has(#cloze-ordinal) > * {
+  padding-inline: 8px;
+}
+
+#app fieldset:has(#cloze-ordinal) .ordinal {
+  font: 600 11px/1.4 var(--mono);
+  background: var(--magenta);
+  color: #fff;
+  padding: 1px 4px;
+}
+
+/* ---- 08 fields (FieldEditor.svelte) ------------------------------------ */
+#app .field {
+  gap: 0;
+  margin-bottom: 12px;
+}
+
+#app .field .head {
+  align-items: center;
+  gap: 4px;
+  background: var(--ink);
+  padding: 3px 4px 3px 8px;
+}
+
+#app .field .head > label {
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 800;
+  font-stretch: 118%;
+  text-transform: uppercase;
+}
+
+#app .field .tools {
+  margin-left: auto;
+  gap: 4px;
+}
+
+#app .field .tools button {
+  border-color: #fff;
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+/* Pin and HTML are toggles; the box says which. Anki's own pin, in ASCII. */
+#app .field .tools button:first-of-type::after {
+  content: " □";
+}
+
+#app .field .tools button[aria-pressed="true"]:first-of-type::after {
+  content: " ■";
+}
+
+#app .field .tools button:last-of-type {
+  background: var(--ink);
+  color: #fff;
+}
+
+#app .field .tools button:last-of-type:hover {
+  background: var(--cyan);
+  color: var(--ink);
+}
+
+#app .field .rich,
+#app .field .source {
+  border: var(--rule);
+  border-top: none;
+  padding: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+#app .field .source {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#app .field .rich[data-duplicate="true"] {
+  background: var(--duplicate);
+}
+
+/* the duplicate notice, as a hazard label rather than a sentence in grey */
+#app .field .warning {
+  border: var(--rule);
+  border-top: none;
+  background: var(--acid);
+  padding: 6px 8px;
+  font: 400 10px/1.4 var(--mono);
+  text-transform: uppercase;
+}
+
+#app .field .warning::before {
+  content: "!! ";
+  font-weight: 600;
+}
+
+/* ---- 09 tags (TagEditor.svelte) ---------------------------------------- */
+#app fieldset:has(#new-tag) > * {
+  padding-inline: 8px;
+}
+
+#app fieldset:has(#new-tag) ul {
+  padding: 8px 8px 0;
+  margin-bottom: 8px;
+}
+
+#app fieldset:has(#new-tag) li {
+  border: var(--rule);
+  border-radius: 0;
+  background: var(--cyan);
+  padding: 1px 4px 1px 6px;
+  font: 600 10px/1.6 var(--mono);
+}
+
+/* the Remove button's words stay for screen readers; the glyph is the button */
+#app fieldset:has(#new-tag) li button {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  font-size: 0;
+}
+
+#app fieldset:has(#new-tag) li button::after {
+  content: "✕";
+  font-size: 10px;
+}
+
+#app fieldset:has(#new-tag) li button:hover {
+  background: none;
+  color: var(--magenta);
+}
+
+#app fieldset:has(#new-tag) .row {
+  padding-bottom: 8px;
+}
+
+#app label[for="new-tag"] {
+  font: 400 9px/1.6 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--grey);
+}
+
+/* ---- 10 source (CardEditor.svelte details.source) ---------------------- */
+#app details.source {
+  border: var(--rule);
+  background: #edeef1;
+  margin-bottom: 14px;
+}
+
+#app details.source summary {
+  cursor: pointer;
+  padding: 6px 8px;
+  background: var(--chrome);
+  font: 600 10px/1.4 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+#app details.source summary::before {
+  content: "07 ";
+}
+
+#app details.source > :not(summary) {
+  padding: 0 8px;
+}
+
+#app details.source > p:first-of-type {
+  border-top: var(--rule);
+  padding-top: 8px;
+}
+
+#app details.source cite {
+  font-style: normal;
+  font-weight: 700;
+}
+
+#app details.source blockquote {
+  border-left: 4px solid var(--magenta);
+  margin: 8px;
+  padding: 2px 0 2px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* ---- 11 notices -------------------------------------------------------- */
+#app .quiet {
+  font: 400 10px/1.5 var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--grey);
+  text-transform: uppercase;
+}
+
+#app .problem,
+#app div.problem p,
+#app .prompt p {
+  color: var(--magenta);
+}
+
+#app div.problem,
+#app .prompt {
+  border: var(--rule);
+  border-left: 8px solid var(--magenta);
+  background: #ffe9f6;
+  padding: 8px;
+  margin-bottom: 12px;
+}
+
+#app div.problem p,
+#app .prompt p {
+  margin: 0 0 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* ---- 12 the two final actions (CardEditor.svelte .actions) ------------- */
+#app .editor > .actions {
+  gap: 6px;
+  padding-bottom: 18px;
+}
+
+#app .editor > .actions button[type="submit"] {
+  flex: 3 1 0;
+  border: var(--rule-heavy);
+  background: var(--magenta);
+  color: #fff;
+  padding: 14px 8px;
+  font-family: var(--sans);
+  font-size: 20px;
+  font-weight: 900;
+  font-stretch: 125%;
+  letter-spacing: -0.01em;
+  box-shadow: 5px 5px 0 var(--ink);
+}
+
+#app .editor > .actions button[type="submit"]:hover:not(:disabled) {
+  background: var(--ink);
+}
+
+#app .editor > .actions button[type="submit"]:active:not(:disabled) {
+  box-shadow: 0 0 0 var(--ink);
+  transform: translate(5px, 5px);
+}
+
+#app .editor > .actions button[type="button"] {
+  flex: 1 1 0;
+  border: var(--rule-heavy);
+  background: var(--paper);
+  padding: 14px 4px;
+}
+
+/* ---- 13 chrome: barcode strip + colophon ------------------------------- */
+#app .editor::before {
+  content: "";
+  display: block;
+  height: 16px;
+  margin-bottom: 14px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--ink) 0 2px,
+    transparent 2px 4px,
+    var(--ink) 4px 5px,
+    transparent 5px 9px,
+    var(--ink) 9px 12px,
+    transparent 12px 14px
+  );
+}
+
+/* The colophon is a real `<footer>` now, carrying the real version — it was
+   a `content:` string here with a made-up serial in it. Outside `main`, so
+   it needs no negative margin to escape that padding. */
+#app footer {
+  display: block;
+  padding: 6px 10px;
+  background: var(--ink);
+  border-top: 6px solid var(--ink);
+  color: #7d7f86;
+  font: 400 9px/1.4 var(--mono);
+  letter-spacing: 0.12em;
+}
+
+/* Narrow sidebars: the display type is the only thing that has to give. */
+@media (max-width: 340px) {
+  #app .top h1 {
+    font-size: 30px;
+  }
+
+  #app .editor > .actions button[type="submit"] {
+    font-size: 16px;
+  }
+}

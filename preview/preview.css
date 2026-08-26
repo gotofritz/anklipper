@@ -1,0 +1,36 @@
+/*
+ * The picker only. Everything inside `#app` is the skin's, and the skin is
+ * scoped to `#app` — so nothing here can reach it, which is the point.
+ */
+body {
+  margin: 0;
+  background: #4a4d55;
+}
+
+#scenes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px;
+  font:
+    400 11px/1 ui-monospace,
+    monospace;
+}
+
+#scenes a {
+  padding: 5px 8px;
+  background: #e4e5e8;
+  color: #0a0a0c;
+  text-decoration: none;
+}
+
+#scenes a[aria-current="page"] {
+  background: #e6007e;
+  color: #fff;
+}
+
+/* The sidebar is narrow, and a skin checked at desktop width is not checked. */
+#app {
+  width: 380px;
+  margin: 0 auto;
+}

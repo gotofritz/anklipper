@@ -55,9 +55,31 @@ landing area above the note type and never touched by a note-type change.
 Fields are filled from it by `sendToField`, and the stash is now named rather
 than silent.
 
-Still to come: onboarding for the host permission, and connection diagnostics
-(M9) — which M10 did not wait for, since nothing in it depends on M9's
-onboarding flow.
+The skin came after it, from `docs/archive/13-add-css.md`: one stylesheet
+scoped to `#app`, riding selectors the markup already had, so no component
+`<style>` block changed and no `!important` appears anywhere. Its two
+typefaces are vendored under `public/fonts/` — see *Fonts* — and the two
+places CSS could not reach became real elements rather than `content:`
+strings: the status strip's marker, which now says which of the three
+connection states the panel actually found, and the colophon, which now
+carries the running extension's own version.
+
+That branch also closed the gap that would have met a first-time user.
+Firefox MV3 grants no host permission at install, so a new install shows
+`permission-missing` — and the only button under it was **Try again**, which
+could never have succeeded. It is now **Allow access to Anki**, which asks the
+browser from the click, and the retry is withheld for that one cause (9.7).
+
+**1.0.0 is what this ships as.** See *Releases* for how one is cut and why an
+unsigned build is not a release.
+
+Still open from M9, and deliberately not in 1.0.0: the diagnostics view, and
+the manual fallback screen that names the exact `webCorsOriginList` JSON for a
+user whose AnkiConnect refuses the extension's origin. Neither blocks a
+working install — the error copy in `src/sidebar/error-copy.ts` gives every M4
+cause its own fix — but both are what a user with an unusual AnkiConnect setup
+would want. M11 (media) and M12 (AI generation) are features on top of a
+working extension, not gaps in it.
 
 `docs/initial-context.md` is the authoritative description of that
 architecture. Read it before changing a layer boundary, a message shape, or a
@@ -155,6 +177,10 @@ On disk:
   works, the test that holds the generated manifest to the permission ceiling,
   and `tests/integration/`, which drives the whole flow — gesture, capture,
   panel, add — with only AnkiConnect mocked.
+- `public/` — copied verbatim to the bundle root, so an absolute `/fonts/…`
+  in CSS resolves at runtime. Holds the vendored fonts; see *Fonts* below.
+- `preview/` — the sidebar rendered outside the browser, for looking at.
+  See *Looking at the sidebar*.
 
 Tests sit beside the module they cover. ESLint enforces the bottom of the
 dependency stack: `src/core/`, `src/manifest/`, and `src/messaging/` may not
@@ -170,6 +196,92 @@ by itself. Widening permissions therefore breaks a test. The ceiling is in
 Update `docs/initial-context.md` in the same change as anything it describes:
 architecture, layer boundaries, messaging, the card model, AnkiConnect
 integration, or permissions.
+
+## Fonts
+
+MV3's content security policy blocks `fonts.googleapis.com`, so the sidebar
+skin's typefaces ship inside the extension. They sit in `public/fonts/` and are
+referenced from `src/entrypoints/sidepanel/tdr.css` by absolute path.
+
+| File | Axes / weight | Source |
+| --- | --- | --- |
+| `Archivo-Variable.woff2` | `wght` 100–900, `wdth` 62–125 | [`google/fonts`, `ofl/archivo`](https://github.com/google/fonts/tree/main/ofl/archivo) |
+| `IBMPlexMono-Regular.woff2` | 400 | [`IBM/plex`, `packages/plex-mono`](https://github.com/IBM/plex/tree/master/packages/plex-mono) |
+| `IBMPlexMono-SemiBold.woff2` | 600 | same |
+
+The `wdth` axis is the point of the variable file, not a bonus: the masthead is
+extended rather than merely bold, which is what the `font-stretch: 62% 125%`
+descriptor in the `@font-face` block unlocks for `font-stretch: 125%` on `h1`.
+A static Archivo, or the `wght`-only variable subset some font CDNs ship, would
+load without error and render the masthead at normal width.
+
+Google Fonts hands you the same variable font as
+`Archivo-VariableFont_wdth,wght.ttf` in its download zip — right font, wrong
+container and name. Convert and rename it rather than hunting for a `.woff2`
+that Google does not publish:
+
+```bash
+pip install fonttools brotli
+python3 -c "
+from fontTools.ttLib import TTFont
+f = TTFont('Archivo-VariableFont_wdth,wght.ttf')
+f.flavor = 'woff2'
+f.save('public/fonts/Archivo-Variable.woff2')
+"
+```
+
+The Plex files are already WOFF2 upstream and are the complete, unsubsetted
+faces — a card can hold whatever the user selected, so subsetting to Latin
+would leave clipped Cyrillic or Greek rendering in a fallback face.
+
+Both families are SIL Open Font License 1.1, and the licence travels with the
+font: `Archivo-OFL.txt` and `IBMPlex-OFL.txt` sit next to them in
+`public/fonts/` and ship in the bundle. Do not reformat them.
+
+`tests/assets/font-assets.test.ts` pins the three references in the stylesheet
+to real WOFF2 files. Without it a missing font is silent — there is no failing
+request to notice, just `font-display: swap` settling on Helvetica.
+
+## Looking at the sidebar
+
+```bash
+pnpm run preview
+```
+
+That serves the real `Panel` — the same component the extension mounts —
+against the in-memory port fakes, with the skin and the vendored fonts
+loaded. Nothing is stubbed and no extension host is faked, because the
+sidebar does not need one: P3 keeps every `browser.*` call behind a port, so
+what is left compiles and mounts like any other Svelte component. If that
+ever stops being true, this page is the first thing that breaks, which is a
+second reason to keep it.
+
+Scenes are URLs, and the links across the top switch between them:
+
+| Scene | What it is for |
+| --- | --- |
+| `?scene=card` | The ordinary case: a captured card, mid-edit |
+| `?scene=empty` | First run — the sidebar open before anything is captured |
+| `?scene=cloze` | Cloze markup, its ordinal controls, and **Mark selection** |
+| `?scene=long` | A note type with four fields, in the collection's order |
+| `?scene=waiting` | A second selection waiting behind an open card (7.4) |
+| `?scene=permission` | The host permission never granted — **Allow access to Anki** |
+| `?scene=offline` | The background not answering: `RT/NO`, and a retry |
+
+Add one in `preview/scenes.ts` when a CSS change turns on a state none of
+these reach. Keep them to states that *render* differently — a scene that
+differs only in wording proves nothing a component test does not already
+hold, and `preview/` is exempt from the TDD gate precisely because it is a
+viewer, not behaviour. Anything with logic in it belongs in `src/` with a
+test.
+
+`pnpm run preview:build` writes the same page to `.output/preview/` if you
+want to serve it somewhere. The README's screenshot is the `card` scene with
+the scene picker removed.
+
+Two things it cannot show you, because they are the browser's: the sidebar's
+real width in Firefox's own chrome, and anything that depends on a live
+AnkiConnect. *Checking it in Firefox* is still what signs work off.
 
 ## Commit and CI gates
 
@@ -217,6 +329,119 @@ Plan: https://github.com/gotofritz/anklipper/blob/main/docs/archive/03-card-draf
 ```
 
 `AGENTS.md` has the full rules under *Releases*.
+
+### What a release contains
+
+`pnpm build` produces two archives in `.output/`:
+
+- `anklipper-<version>-firefox.zip` — the extension itself.
+- `anklipper-<version>-sources.zip` — the sources AMO reviewers need,
+  because the shipped code is bundled. `wxt.config.ts` keeps `docs/` and
+  `.claude/` out of it.
+
+`.github/workflows/release.yml` attaches both to the GitHub Release, and —
+when the repository holds AMO credentials — a signed `.xpi` beside them.
+
+### Signing, and why an unsigned build is not a release
+
+Firefox will not install an unsigned add-on permanently. A zip from the
+release page is therefore a build, not something a user can run: loading it
+through `about:debugging` works, but only until the browser restarts, and a
+temporary install draws a **new `moz-extension://` UUID every time** — which
+breaks the user's own AnkiConnect allowlist entry on every restart, for the
+reason `wxt.config.ts` pins a persistent dev profile.
+
+So distribution means signing. Mozilla signs through AMO's API, and
+`web-ext` — already a dev dependency — drives it:
+
+```bash
+pnpm run sign
+```
+
+That builds, zips, and submits the build to AMO on the **unlisted** channel,
+which signs it and hands back a `.xpi` without listing it in the public
+gallery. It needs an API key and secret from
+[addons.mozilla.org/developers/addon/api/key](https://addons.mozilla.org/en-US/developers/addon/api/key/),
+in the environment:
+
+```bash
+export WEB_EXT_API_KEY=user:12345678:123
+export WEB_EXT_API_SECRET=…
+```
+
+Without those two, `pnpm run sign` is the only way to sign, and it is a
+manual step someone has to remember.
+
+#### Giving CI the same credentials
+
+**Settings → Secrets and variables → Actions → Secrets → Repository
+secrets → New repository secret**, twice:
+
+| Name | Value |
+| --- | --- |
+| `AMO_API_KEY` | the JWT issuer, `user:12345678:123` |
+| `AMO_API_SECRET` | the secret beside it |
+
+Then every release signs itself. Without them the signing step is skipped
+rather than failed — the zips still attach, and the release simply has no
+`.xpi`.
+
+Two ways to get this wrong, both silent:
+
+- **Not environment secrets.** GitHub lists *Environment secrets* first on
+  that page, and its only button leads to creating an environment, so it
+  reads like the only route. It is not: *Repository secrets* is further
+  down with its own button. An environment secret resolves only for a job
+  that declares `environment:`, and `release.yml` declares none — so putting
+  them there leaves `secrets.AMO_API_KEY` empty, the step skips its
+  `if: env.WEB_EXT_API_KEY != ''`, and the release quietly has no `.xpi`.
+- **Not variables.** Repository *variables* are plaintext and appear in
+  logs. The API secret is a secret.
+
+Check it worked on the next release run: *Sign for distribution* should run
+rather than skip, and the release page should carry an `.xpi` beside the two
+zips. If it skipped, the names are misspelled — they are matched exactly.
+
+#### If a release should wait for a human
+
+An environment is what gates a job on approval, and signing is a fair thing
+to gate. Create one — call it `release` — under **Settings → Environments**,
+add yourself under *Required reviewers*, move the two secrets to it, and add
+one line to the `artifact` job in `.github/workflows/release.yml`:
+
+```yaml
+    environment: release
+```
+
+Every release then pauses for approval before it signs. Do both halves or
+neither: moving the secrets to an environment without that line is exactly
+the silent skip above.
+
+Signing depends on the extension identity staying fixed. `GECKO_ID` in
+`src/manifest/manifest.ts` is what AMO keys the add-on to; changing it
+creates a different add-on, and every existing install stops updating.
+
+### Cutting the first stable release
+
+`release-please-config.json` currently carries `"release-as": "1.0.0"`.
+That is a one-release instruction, not a setting: **delete it once 1.0.0 has
+been tagged**, or every subsequent release PR will propose 1.0.0 again.
+`"bump-minor-pre-major": false` beside it is permanent — past 1.0.0 a
+breaking change should bump the major, which is what it turns back on.
+
+### The order of a release
+
+1. Merge the work. CI green on `main`.
+2. release-please opens or updates its release pull request. Read the
+   changelog entry it wrote — it is the pull request titles, and nothing else.
+3. Merge that pull request. It tags, publishes the release, builds, signs if
+   it can, and attaches the archives.
+4. Check the release page has an `.xpi`. If it does not, the credentials are
+   missing — see *Giving CI the same credentials* — so sign locally with
+   `pnpm run sign` and upload the result.
+5. Install that `.xpi` in a clean Firefox profile and add one real card
+   before telling anyone. The README's install instructions are the steps to
+   follow.
 
 ## Testing
 

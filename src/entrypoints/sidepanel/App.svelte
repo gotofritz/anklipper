@@ -15,6 +15,7 @@
     createStoredSettings,
     loadSettingsOrDefaults,
   } from "@/platform/settings-store";
+  import { DEFAULT_SETTINGS } from "@/core/settings";
   import { createStorage } from "@/platform/storage";
   import Panel from "@/sidebar/Panel.svelte";
   import { loadDraft, pingBackground } from "@/sidebar/connect";
@@ -47,11 +48,23 @@
   // runtime and never hardcoded (P8) — Firefox mints a fresh
   // `moz-extension://<uuid>` per installation — and the host permission is
   // checked before anything is sent (2.7).
+  const origin = createOrigin();
+
+  // The endpoint the last permission check was made against (9.6). Firefox
+  // refuses `permissions.request` outside a user gesture, and an `await` on
+  // the settings store inside the click handler would spend that gesture — so
+  // the endpoint is recorded on the way past instead. The check runs
+  // immediately before the refusal the button answers, so this is always the
+  // endpoint that refusal was about.
+  let refusedEndpoint = DEFAULT_SETTINGS.endpoint;
+
   const anki = createSettingsAnkiClient({
     loadSettings: () => loadSettingsOrDefaults(settings),
-    origin: createOrigin().extensionOrigin(),
-    hasHostPermission: (endpoint) =>
-      permissions.has(hostPermissionFor(endpoint)),
+    origin: origin.extensionOrigin(),
+    hasHostPermission: (endpoint) => {
+      refusedEndpoint = endpoint;
+      return permissions.has(hostPermissionFor(endpoint));
+    },
   });
 </script>
 
@@ -64,4 +77,6 @@
   {drafts}
   {pending}
   {remembered}
+  version={origin.extensionVersion()}
+  grantAccess={() => permissions.request(hostPermissionFor(refusedEndpoint))}
 />

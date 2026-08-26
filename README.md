@@ -7,10 +7,32 @@ ready for you to check and save — without leaving the page or opening Anki.
 > **Building or contributing?** Start with the
 > [developer guide](docs/developer-guide.md).
 
-## Status
+![The Anklipper panel: the text you selected at the top, then the deck and
+note type, the card's fields, its tags, and where it came
+from](docs/images/sidebar.png)
 
-Anklipper is being built and is **not ready to install yet**. This page
-describes what it will do. There is nothing to download at the moment.
+## Installing it
+
+Anklipper is not in Firefox's add-on gallery. You install it from its own
+releases page instead, which is one download and one click.
+
+1. Open the [latest release](https://github.com/gotofritz/anklipper/releases/latest).
+2. Under **Assets**, download the file whose name ends in `.xpi`.
+3. Drag that file onto an open Firefox window. Firefox asks whether to add
+   Anklipper — say **Add**.
+
+Firefox keeps it from then on. To update, do the same three things with a
+newer file.
+
+Two things worth knowing:
+
+- **You need Firefox 128 or newer.** Older versions cannot run it.
+- **If a release has no `.xpi`**, only `.zip` files, that build was never
+  signed and Firefox will refuse to install it. Take the newest release that
+  has one.
+
+Read **Before you start**, below, first: Anklipper is useless without Anki
+and one Anki add-on, and both take a couple of minutes to set up.
 
 ## What it does
 

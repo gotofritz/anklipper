@@ -105,6 +105,7 @@ AnkiConnect interface precedes the editor that renders its data.
 | M10 | Card editor parity: every note type, its own fields in order, formatting, sticky fields, tags | — (see below) | done: `docs/archive/10-card-editor-parity.md` |
 | M11 | Media: region screenshots, page images, paste and drop | M10 | `11-media-and-screenshots.md` |
 | M12 | AI-assisted generation — **blocked** on its own design doc | M11 | `12-ai-generation.md` |
+| M13 | The tDR skin, vendored fonts, and the host-permission ask | M10 | done: `docs/archive/13-add-css.md` |
 
 ## Resolved questions
 
@@ -118,6 +119,8 @@ Each settled in the subplan named; reversing one means editing that subplan.
 | ~~How much surrounding context?~~ **settled at M5** | Nearest block ancestor, capped at 1 000 chars; selection capped at 10 000 | M5 5.3 |
 | ~~Rich text or plain?~~ **settled at M5** | Plain on capture, with the original HTML kept in `source.html`; rich in the editor from M10 | M5 5.2, M10 10.3 |
 | Which browser first? | Firefox; Chrome after the first release | P5, M9 9.5 |
+| What does 1.0.0 wait for? | Nothing beyond M13. M9's diagnostics view and manual `webCorsOriginList` fallback are wanted, not blocking; M11 and M12 are features on a working extension | M13 |
+| How is a build distributed? | Signed by AMO on the **unlisted** channel and attached to the GitHub Release as an `.xpi`. Firefox will not install an unsigned add-on permanently, and a temporary install draws a new UUID each restart, breaking the user's AnkiConnect allowlist | M13 |
 
 ## Deferred
 
