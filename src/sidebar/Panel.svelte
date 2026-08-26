@@ -1,11 +1,13 @@
 <script lang="ts">
   import type {
     AnkiClient,
+    AnkiDiagnostics,
     DraftStore,
     RememberedStore,
   } from "@/core/ports/types";
 
   import CardEditor from "./CardEditor.svelte";
+  import Diagnostics from "./Diagnostics.svelte";
   import type { DraftStatus, SidebarStatus } from "./connect";
   import { draftStoreErrorCopy } from "./error-copy";
   import { dismissPending, rememberDeck, takePending } from "./session";
@@ -25,6 +27,8 @@
     onCancel,
     version,
     grantAccess,
+    describeAnki,
+    copy,
   }: {
     connect: () => Promise<SidebarStatus>;
     loadDraft: () => Promise<DraftStatus>;
@@ -61,6 +65,16 @@
      * Firefox refuses a `permissions.request` made outside a user gesture.
      */
     grantAccess?: () => Promise<boolean>;
+    /**
+     * How the adapter is configured, for the connection report (9.3): the
+     * endpoint in use, this installation's own origin, and whether an API key
+     * is set — never the key itself (4.8). Absent in tests that do not care,
+     * and in any host that cannot say, which costs the report those lines and
+     * never the cause.
+     */
+    describeAnki?: () => Promise<AnkiDiagnostics>;
+    /** Put the manual allowlist snippet on the clipboard (9.2a). */
+    copy?: (text: string) => Promise<void>;
   } = $props();
 
   let status = $state<SidebarStatus>({ kind: "connecting" });
@@ -186,6 +200,20 @@
     {/if}
   </div>
   <p role="status">{label}<span class="serial">{serial}</span></p>
+
+  <!--
+    9.4. Onboarding and diagnostics are the same view: the cause and its fix
+    are what a first run and a mid-session failure both need. It folds itself
+    away when Anki answers and opens when it does not, so it is neither a
+    wizard that runs once nor a banner over the card.
+  -->
+  <Diagnostics
+    {anki}
+    {openSettings}
+    {grantAccess}
+    describe={describeAnki}
+    {copy}
+  />
 
   {#if slotError !== undefined}
     <p class="problem" role="alert">{slotError}</p>

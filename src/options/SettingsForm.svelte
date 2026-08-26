@@ -247,27 +247,41 @@
       {/each}
     </div>
 
-    <div class="field">
-      <label for="api-key">AnkiConnect API key</label>
-      <!--
-        8.5a. Stored like any other setting, and treated like no other: it is
-        a credential for a service that can delete a collection, so it is
-        never logged, never in diagnostics, and not on screen by default.
-      -->
-      <input
-        id="api-key"
-        type="password"
-        autocomplete="off"
-        spellcheck="false"
-        bind:value={
-          () => model.settings.apiKey, (value) => model.setApiKey(value)
-        }
-      />
-      <p class="quiet">
-        Leave this empty unless you set a key in AnkiConnect's own
-        configuration. It is kept on this computer and sent only to Anki.
-      </p>
-    </div>
+    <!--
+      8.5a and M9. The key is a credential for a service that can delete a
+      collection, so it is never logged and never in diagnostics — and it is
+      unset for almost everyone, so the box appears for a reason rather than
+      by default: one is stored, AnkiConnect asked for one, or the user said
+      their Anki has one.
+    -->
+    {#if model.apiKeyWanted}
+      <div class="field">
+        <label for="api-key">AnkiConnect API key</label>
+        <input
+          id="api-key"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          bind:value={
+            () => model.settings.apiKey, (value) => model.setApiKey(value)
+          }
+        />
+        <p class="quiet">
+          Leave this empty unless you set a key in AnkiConnect's own
+          configuration. It is kept on this computer and sent only to Anki.
+        </p>
+      </div>
+    {:else}
+      <div class="field">
+        <button type="button" onclick={() => model.revealApiKey()}>
+          My AnkiConnect needs an API key
+        </button>
+        <p class="quiet">
+          Almost nobody has one. AnkiConnect only asks for a key if you set one
+          in its own configuration.
+        </p>
+      </div>
+    {/if}
   </fieldset>
 
   {#if model.notice !== undefined}

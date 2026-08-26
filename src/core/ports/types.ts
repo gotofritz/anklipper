@@ -64,6 +64,21 @@ export type AnkiConnection =
   | { readonly kind: "connected"; readonly apiVersion: number }
   | { readonly kind: "unavailable"; readonly cause: AnkiError };
 
+/**
+ * How the adapter is configured, as the user may be shown it or paste it into
+ * a bug report (4.8, 9.3).
+ *
+ * The API key is reported as a yes-or-no and never as a value: it is a
+ * credential for a service that can delete a collection, and a diagnostics
+ * report is the one thing users paste in public.
+ */
+export interface AnkiDiagnostics {
+  readonly endpoint: string;
+  readonly origin: string;
+  readonly apiKeyConfigured: boolean;
+  readonly timeoutMs: number;
+}
+
 export type NoteId = number;
 
 export interface AnkiClient {

@@ -65,6 +65,17 @@ export interface SettingsModel {
   readonly loadError: SettingsStoreError | undefined;
   /** An intent the model refused, already in the user's words. */
   readonly notice: string | undefined;
+  /**
+   * Whether the API key field belongs on screen (M9).
+   *
+   * The key is optional and unset for almost everyone (4.8), and a credential
+   * box on a form nobody needs is a box people fill in wrongly. It appears for
+   * a reason: a key is already stored, AnkiConnect refused a request for want
+   * of one, or the user said their Anki has one.
+   */
+  readonly apiKeyWanted: boolean;
+  /** The user saying their AnkiConnect has a key. */
+  revealApiKey(): void;
   load(): Promise<void>;
   setDeck(deck: string): void;
   setNoteType(name: string): void;
@@ -128,6 +139,12 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
   let loadError = $state.raw<SettingsStoreError | undefined>(undefined);
   let notice = $state.raw<string | undefined>(undefined);
   let issues = $state.raw<readonly SettingsIssue[]>([]);
+  /**
+   * The user asked for the key field, or a load found AnkiConnect asking for
+   * one. Kept apart from the stored key so clearing the box does not take the
+   * box away while the user is still in it.
+   */
+  let apiKeyAsked = $state.raw(false);
 
   /**
    * The single place the settings value is replaced. An edit makes the last
@@ -190,6 +207,13 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
     get notice() {
       return notice;
     },
+    get apiKeyWanted() {
+      return apiKeyAsked || settings.apiKey !== "";
+    },
+
+    revealApiKey(): void {
+      apiKeyAsked = true;
+    },
 
     async load(): Promise<void> {
       decks = { kind: "loading" };
@@ -213,6 +237,17 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
       noteTypes = models.ok
         ? { kind: "ready", value: models.value }
         : { kind: "failed", error: models.error };
+
+      // M9: the add-on asking for a key is the one thing that makes the field
+      // worth showing to someone who has not set one. Every other failure is
+      // about reaching Anki at all, and a credential box under it would be an
+      // invitation to type something into the wrong problem.
+      if (
+        (!deckNames.ok && deckNames.error.kind === "api-key-required") ||
+        (!models.ok && models.error.kind === "api-key-required")
+      ) {
+        apiKeyAsked = true;
+      }
 
       // The stored descriptor is a snapshot of what Anki said when the user
       // chose it, and a field renamed in Anki since would leave this form
@@ -346,6 +381,9 @@ export function createSettingsModel(deps: SettingsModelDeps): SettingsModel {
       issues = [];
       notice = undefined;
       hostPermission = "unknown";
+      // The reset cleared the key with everything else, so the field has no
+      // reason to be on screen any more.
+      if (done.ok) apiKeyAsked = false;
       saveError = done.ok ? undefined : done.error;
       saveState = done.ok ? "saved" : "failed";
     },

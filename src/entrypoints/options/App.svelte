@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createSettingsAnkiClient } from "@/anki/from-settings";
   import SettingsForm from "@/options/SettingsForm.svelte";
+  import ShortcutList from "@/options/ShortcutList.svelte";
   import { createOrigin } from "@/platform/origin";
   import { createPermissions, hostPermissionFor } from "@/platform/permissions";
   import {
@@ -37,3 +38,9 @@
   requestHostPermission={(endpoint) =>
     permissions.request(hostPermissionFor(endpoint))}
 />
+
+<!--
+  The shortcuts belong to the sidebar and are documented here, because this is
+  the page a user opens to find out what the extension can do (M9).
+-->
+<ShortcutList />

@@ -24,7 +24,7 @@ subplan and saying so here, per `AGENTS.md`.
 | P6 | **Deterministic generation only** through M11; no AI, no egress beyond loopback | M12 | Low — additive |
 | P7 | **Cloze is in the MVP**, as a note-type flavour. The markup is pure string work; only *choosing* what to hide needs AI | M3 | Low — but the model must know from M3 |
 | P8 | **The extension's own origin is read at runtime, never hardcoded.** Firefox's `moz-extension://<uuid>` is per installation | M2, M9 | Low, but no constant is correct for two users |
-| P9 | ~~Onboarding uses AnkiConnect's `requestPermission` handshake~~ — **reversed at M4** on evidence: the add-on does not enforce `webCorsOriginList` server-side, and a granted host permission exempts the extension from the browser's CORS check, so there is nothing for the handshake to unblock. Removed rather than kept unused. M9 onboards on the host permission alone | M4 4.15, M9 | Low to restore — one action and one reply shape, both in git |
+| P9 | ~~Onboarding uses AnkiConnect's `requestPermission` handshake~~ — **reversed at M4** on evidence: the add-on does not enforce `webCorsOriginList` server-side, and a granted host permission exempts the extension from the browser's CORS check, so there is nothing for the handshake to unblock. Removed rather than kept unused. M9 onboarded on the host permission alone, and kept the manual `webCorsOriginList` edit as the fallback for the setup where that is not enough (9.2a) | M4 4.15, M9 | Low to restore — one action and one reply shape, both in git |
 | P10 | **Rich text editing arrives in M10**, superseding M6's plain textarea. Capture stays plain text | M10 | Medium — changes the input element under M6's tests |
 | P11 | **Field content is HTML, and `src/core/field-html.ts` is the only thing that decides what kind.** Every formatting action is a pure function over parsed runs; no browser editing command is used | M10 10.2, 10.5 | Low — it is one module, and the alternative is trusting `execCommand` |
 | P12 | **The captured text also lives outside the fields**, as `CardDraft.scratch` — the landing area. Fields are filled *from* it; a note-type change cannot move it | M10a | Low — additive to P4; nothing reads it but the editor and, later, M12 |
@@ -55,8 +55,10 @@ carrying a non-allowlisted `moz-extension://` origin, so it does not enforce
 `webCorsOriginList` server-side — it sets CORS response headers and leaves the
 enforcing to the browser, which a granted host permission exempts the extension
 from. So `webCorsOriginList` constrains web pages, and not this extension.
-Whether P9 is needed at all is now an open question, settled in M9. The error
-taxonomy and the config details are M4's; the user-facing flow is M9's.
+**M9 settled it: P9 stays reversed** — onboarding is the host permission first,
+then the cause and its fix, with the manual allowlist edit as the fallback for
+the setup where that is not enough. The error taxonomy and the config details
+are M4's; the user-facing flow is M9's.
 
 That the allowlist is browser-enforced is also why `"*"` must never be
 suggested: web pages are precisely the class it does constrain, and widening it
@@ -101,7 +103,7 @@ AnkiConnect interface precedes the editor that renders its data.
 | M6 | Sidebar editor, built against the fake adapter | M3, M4 | done: `docs/archive/06-svelte-editor.md` |
 | M7 | End-to-end MVP, with the draft persisted from the moment it exists | M4, M5, M6 | done: `docs/archive/07-end-to-end-mvp.md` |
 | M8 | Settings, storage, and schema migration | M7 | done: `docs/archive/08-settings-and-persistence.md` |
-| M9 | Onboarding, connection diagnostics, repeat-capture polish | M8 | `09-onboarding-and-diagnostics.md` |
+| M9 | Onboarding, connection diagnostics, repeat-capture polish | M8 | done: `docs/archive/09-onboarding-and-diagnostics.md` |
 | M10 | Card editor parity: every note type, its own fields in order, formatting, sticky fields, tags | — (see below) | done: `docs/archive/10-card-editor-parity.md` |
 | M11 | Media: region screenshots, page images, paste and drop | M10 | `11-media-and-screenshots.md` |
 | M12 | AI-assisted generation — **blocked** on its own design doc | M11 | `12-ai-generation.md` |
@@ -119,7 +121,7 @@ Each settled in the subplan named; reversing one means editing that subplan.
 | ~~How much surrounding context?~~ **settled at M5** | Nearest block ancestor, capped at 1 000 chars; selection capped at 10 000 | M5 5.3 |
 | ~~Rich text or plain?~~ **settled at M5** | Plain on capture, with the original HTML kept in `source.html`; rich in the editor from M10 | M5 5.2, M10 10.3 |
 | Which browser first? | Firefox; Chrome after the first release | P5, M9 9.5 |
-| What does 1.0.0 wait for? | Nothing beyond M13. M9's diagnostics view and manual `webCorsOriginList` fallback are wanted, not blocking; M11 and M12 are features on a working extension | M13 |
+| What does 1.0.0 wait for? | Nothing beyond M13. M9's diagnostics view and manual `webCorsOriginList` fallback were wanted, not blocking; both shipped after it. M11 and M12 are features on a working extension | M13 |
 | How is a build distributed? | Signed by AMO on the **unlisted** channel and attached to the GitHub Release as an `.xpi`. Firefox will not install an unsigned add-on permanently, and a temporary install draws a new UUID each restart, breaking the user's AnkiConnect allowlist | M13 |
 
 ## Deferred

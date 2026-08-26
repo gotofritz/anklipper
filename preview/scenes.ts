@@ -80,6 +80,16 @@ function panel(
       sticky: { Basic: { Back: "<i>Example Encyclopedia</i>" } },
     }),
     version: "1.0.0",
+    // The connection report's facts (M9). A fixed UUID: the real one is minted
+    // per installation, and the point here is that the line is long enough to
+    // wrap awkwardly if the skin lets it.
+    describeAnki: async () => ({
+      endpoint: "http://127.0.0.1:8765",
+      origin: "moz-extension://11111111-2222-3333-4444-555555555555",
+      apiKeyConfigured: false,
+      timeoutMs: 5_000,
+    }),
+    copy: async () => {},
     grantAccess: async () => {
       // Nothing here can grant anything — the point is the button, and what
       // the panel looks like while it is on screen.

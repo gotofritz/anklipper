@@ -3,6 +3,7 @@ import type { NoteType } from "@/core/note-type";
 import type {
   AnkiClient,
   AnkiConnection,
+  AnkiDiagnostics,
   AnkiError,
   NoteId,
 } from "@/core/ports/types";
@@ -10,7 +11,7 @@ import type { Result } from "@/core/result";
 import type { Settings } from "@/core/settings";
 
 import type { AnkiClientConfig } from "./client";
-import { createAnkiClient } from "./client";
+import { createAnkiClient, describeAnkiConnection } from "./client";
 
 /**
  * The AnkiConnect adapter, configured from the user's settings (M8).
@@ -102,4 +103,19 @@ export function createSettingsAnkiClient(deps: SettingsAnkiDeps): AnkiClient {
       return (await configured()).addNote(draft);
     },
   };
+}
+
+/**
+ * How the connection is configured, read fresh each time (9.3).
+ *
+ * The report is what a first-run user checks their own Anki against and what
+ * a bug report carries, so it has to describe the settings as they are now —
+ * the options page can change the endpoint while the sidebar is open. The API
+ * key is reported as a yes-or-no and never as a value (4.8).
+ */
+export function createSettingsAnkiDiagnostics(
+  deps: SettingsAnkiDeps,
+): () => Promise<AnkiDiagnostics> {
+  return async () =>
+    describeAnkiConnection(ankiConfigFrom(await deps.loadSettings(), deps));
 }

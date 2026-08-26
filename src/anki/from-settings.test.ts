@@ -6,7 +6,11 @@ import { createDraft } from "@/core/draft";
 import { BASIC } from "@/fixtures/note-types";
 
 import { describeAnkiConnection } from "./client";
-import { ankiConfigFrom, createSettingsAnkiClient } from "./from-settings";
+import {
+  ankiConfigFrom,
+  createSettingsAnkiClient,
+  createSettingsAnkiDiagnostics,
+} from "./from-settings";
 
 const ORIGIN = "moz-extension://11111111-2222-3333-4444-555555555555";
 
@@ -247,5 +251,43 @@ describe("createSettingsAnkiClient", () => {
     expect(noteTypes.ok && noteTypes.value.map((one) => one.name)).toEqual([
       "Basic",
     ]);
+  });
+});
+
+/**
+ * What M9's connection report renders (9.3). Read per call for the same reason
+ * the client is built per call: the options page can change the endpoint while
+ * the sidebar is open, and a report describing the old one would send the user
+ * to check an address nothing is talking to.
+ */
+describe("createSettingsAnkiDiagnostics", () => {
+  it("reports the endpoint and origin in use right now", async () => {
+    let endpoint = "http://127.0.0.1:8765";
+    const describe_ = createSettingsAnkiDiagnostics({
+      loadSettings: async () => ({ ...DEFAULT_SETTINGS, endpoint }),
+      origin: ORIGIN,
+    });
+
+    expect(await describe_()).toMatchObject({
+      endpoint: "http://127.0.0.1:8765",
+      origin: ORIGIN,
+    });
+
+    endpoint = "http://localhost:8888";
+    expect(await describe_()).toMatchObject({
+      endpoint: "http://localhost:8888",
+    });
+  });
+
+  it("reports that a key is set, and never the key (4.8)", async () => {
+    const describe_ = createSettingsAnkiDiagnostics({
+      loadSettings: async () => ({ ...DEFAULT_SETTINGS, apiKey: "s3cret" }),
+      origin: ORIGIN,
+    });
+
+    const facts = await describe_();
+
+    expect(facts.apiKeyConfigured).toBe(true);
+    expect(JSON.stringify(facts)).not.toContain("s3cret");
   });
 });

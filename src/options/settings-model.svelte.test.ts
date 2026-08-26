@@ -317,3 +317,82 @@ describe("the permission the configured endpoint needs", () => {
     expect(settingsModel.saveState).toBe("refused");
   });
 });
+
+/**
+ * 9. The key is optional and unset for almost everyone, and a credential
+ * field on a form nobody needs is a field people fill in wrongly. It appears
+ * when there is a reason for it and not before.
+ */
+describe("the API key, surfaced on demand", () => {
+  it("stays out of the way when no key is set and none is wanted", async () => {
+    const settingsModel = model();
+
+    await settingsModel.load();
+
+    expect(settingsModel.apiKeyWanted).toBe(false);
+  });
+
+  it("appears when AnkiConnect says a request needs one", async () => {
+    const anki = createFakeAnkiClient({});
+    anki.failWith({
+      kind: "api-key-required",
+      message: "valid api key must be provided",
+    });
+
+    const settingsModel = model({ anki });
+    await settingsModel.load();
+
+    expect(settingsModel.apiKeyWanted).toBe(true);
+  });
+
+  it("does not appear for a failure that is not about a key", async () => {
+    const anki = createFakeAnkiClient({});
+    anki.failWith({ kind: "anki-not-running", message: "closed" });
+
+    const settingsModel = model({ anki });
+    await settingsModel.load();
+
+    expect(settingsModel.apiKeyWanted).toBe(false);
+  });
+
+  it("appears when a key is already stored, so it can be changed or cleared", async () => {
+    const settingsModel = model({
+      settings: createFakeSettingsStore({ apiKey: "s3cret" }),
+    });
+
+    await settingsModel.load();
+
+    expect(settingsModel.apiKeyWanted).toBe(true);
+  });
+
+  it("appears when the user asks for it", async () => {
+    const settingsModel = model();
+    await settingsModel.load();
+
+    settingsModel.revealApiKey();
+
+    expect(settingsModel.apiKeyWanted).toBe(true);
+  });
+
+  it("stays once it has been asked for, even after the key is cleared", async () => {
+    const settingsModel = model();
+    await settingsModel.load();
+    settingsModel.revealApiKey();
+
+    settingsModel.setApiKey("");
+
+    expect(settingsModel.apiKeyWanted).toBe(true);
+  });
+
+  it("goes away again with a reset, which cleared the key with it (8.5)", async () => {
+    const settingsModel = model({
+      settings: createFakeSettingsStore({ apiKey: "s3cret" }),
+    });
+    await settingsModel.load();
+    expect(settingsModel.apiKeyWanted).toBe(true);
+
+    await settingsModel.reset();
+
+    expect(settingsModel.apiKeyWanted).toBe(false);
+  });
+});

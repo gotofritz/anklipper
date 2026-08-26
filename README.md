@@ -124,11 +124,16 @@ You can change:
   changed AnkiConnect's own settings. Anklipper only ever talks to your own
   computer, and it will not accept an address anywhere else.
 - **An API key**, if — and only if — you set one in AnkiConnect. Almost nobody
-  has. It is kept on your computer, sent only to Anki, and never shown in
-  anything Anklipper writes out.
+  has, so the box is not there until it is needed: it appears if you already
+  have a key saved, if Anki asks for one, or if you click **My AnkiConnect
+  needs an API key**. It is kept on your computer, sent only to Anki, and never
+  shown in anything Anklipper writes out.
 
 **Reset to defaults** puts all of that back. It does not forget the deck you
 last used.
+
+The settings page also lists **every keyboard shortcut** Anklipper has, and
+what each one does.
 
 There are two things Anklipper remembers rather than asks about: **the deck
 your last card went into**, so the next card starts there, and **any fields
@@ -181,6 +186,41 @@ still works.
 If you change Anki's address in Anklipper's settings, Firefox will ask again
 for the new one when you save. Say yes to that too, or cards cannot be added
 there.
+
+## If something is not working
+
+At the top of the panel is a line saying whether Anklipper can reach Anki. It
+reads **Anki: connected** when all is well. If it does not, click that line: it
+opens and tells you what is wrong and what to do about it, and there is a
+**Check again** button to press once you have done it.
+
+The usual answers are short ones.
+
+- **Anki is not running.** Anki has to be open. Start it, then press **Check
+  again**.
+- **AnkiConnect is not installed.** See **Before you start**, above.
+- **Firefox has not let Anklipper reach Anki.** There is an **Allow access to
+  Anki** button; press it and say yes.
+- **Anki is asking for an API key.** Open the settings page and put it in the
+  box that has appeared there.
+
+Closing Anki while you are part way through a card takes nothing away. The card
+stays exactly as you left it. Reopen Anki, press **Check again**, and add it.
+
+### If Anki still will not accept Anklipper
+
+This is rare, and there is one more thing to try. The panel shows you a short
+piece of text and a **Copy the snippet** button. In Anki:
+
+1. Open **Tools → Add-ons**.
+2. Select **AnkiConnect**, then click **Config**.
+3. Find the line beginning `"webCorsOriginList"` and replace it with what
+   Anklipper gave you.
+4. Click OK, then close and reopen Anki.
+
+That text is different on every computer, which is why Anklipper has to hand it
+to you rather than print it here. It names Anklipper and nothing else — it does
+not let any website reach your cards.
 
 ## Your information stays on your computer
 

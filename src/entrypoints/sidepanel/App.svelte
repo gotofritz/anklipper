@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { createSettingsAnkiClient } from "@/anki/from-settings";
+  import {
+    createSettingsAnkiClient,
+    createSettingsAnkiDiagnostics,
+  } from "@/anki/from-settings";
   import { createMessenger } from "@/messaging/messenger";
   import {
     PENDING_KEY,
@@ -58,14 +61,20 @@
   // endpoint that refusal was about.
   let refusedEndpoint = DEFAULT_SETTINGS.endpoint;
 
-  const anki = createSettingsAnkiClient({
+  const ankiDeps = {
     loadSettings: () => loadSettingsOrDefaults(settings),
     origin: origin.extensionOrigin(),
-    hasHostPermission: (endpoint) => {
+    hasHostPermission: (endpoint: string) => {
       refusedEndpoint = endpoint;
       return permissions.has(hostPermissionFor(endpoint));
     },
-  });
+  };
+
+  const anki = createSettingsAnkiClient(ankiDeps);
+  // What the connection report renders (9.3). Read per call, from the same
+  // settings the client is built from, so the two cannot describe different
+  // endpoints.
+  const describeAnki = createSettingsAnkiDiagnostics(ankiDeps);
 </script>
 
 <Panel
@@ -79,4 +88,6 @@
   {remembered}
   version={origin.extensionVersion()}
   grantAccess={() => permissions.request(hostPermissionFor(refusedEndpoint))}
+  {describeAnki}
+  copy={(text) => navigator.clipboard.writeText(text)}
 />

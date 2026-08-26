@@ -129,6 +129,56 @@ describe("sidebar panel", () => {
   });
 });
 
+/**
+ * 9.4. The connection report is reachable from the panel and not only from a
+ * first run, because the failure it explains recurs whenever Anki closes.
+ */
+describe("the connection report", () => {
+  const report = () => screen.getByRole("group", { name: /anki connection/i });
+
+  it("is on the panel, folded away, when Anki answers", async () => {
+    renderPanel({ connect: never, loadDraft: noDraft, subscribe: noChanges });
+
+    await vi.waitFor(() =>
+      expect(report()).toHaveTextContent(/anki: connected/i),
+    );
+    expect(report()).not.toHaveAttribute("open");
+  });
+
+  it("opens itself, with the cause, when Anki cannot be reached", async () => {
+    const anki = client();
+    anki.failWith({ kind: "anki-not-running", message: "nothing answered" });
+    renderPanel({
+      anki,
+      connect: never,
+      loadDraft: noDraft,
+      subscribe: noChanges,
+    });
+
+    await vi.waitFor(() => expect(report()).toHaveAttribute("open"));
+    expect(report()).toHaveTextContent(/anki is not running/i);
+  });
+
+  it("reports the endpoint and origin the entrypoint gave it", async () => {
+    renderPanel({
+      connect: never,
+      loadDraft: noDraft,
+      subscribe: noChanges,
+      describeAnki: async () => ({
+        endpoint: "http://127.0.0.1:8765",
+        origin: "moz-extension://a-uuid",
+        apiKeyConfigured: false,
+        timeoutMs: 5_000,
+      }),
+    });
+
+    await vi.waitFor(() =>
+      expect(report()).toHaveTextContent("moz-extension://a-uuid"),
+    );
+    expect(report()).toHaveTextContent("http://127.0.0.1:8765");
+  });
+});
+
 // The skin puts a teletype marker at the right of the status strip. It was a
 // fixed `::after` string reading `RT/OK`, which said "connected" whatever the
 // panel had actually found — so it is the real state or it is nothing.

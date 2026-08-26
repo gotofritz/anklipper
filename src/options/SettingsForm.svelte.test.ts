@@ -41,7 +41,6 @@ describe("the settings form", () => {
     expect(
       screen.getByLabelText("How long to wait (milliseconds)"),
     ).toBeVisible();
-    expect(screen.getByLabelText("AnkiConnect API key")).toBeVisible();
   });
 
   it("offers Anki's decks", async () => {
@@ -99,6 +98,45 @@ describe("the settings form", () => {
       await screen.findByText(/never talks to anywhere else/i),
     ).toBeVisible();
     expect(endpoint).toHaveAttribute("aria-invalid", "true");
+  });
+
+  /**
+   * M9. Almost nobody has a key (4.8), and a credential box on a form that
+   * does not need one is a box people fill in wrongly — so it appears for a
+   * reason rather than by default.
+   */
+  it("keeps the API key field off a form that has no use for one", async () => {
+    renderForm();
+
+    await screen.findByLabelText("AnkiConnect address");
+
+    expect(screen.queryByLabelText("AnkiConnect API key")).toBeNull();
+  });
+
+  it("offers it to a user who says their AnkiConnect has one", async () => {
+    renderForm();
+    await screen.findByLabelText("AnkiConnect address");
+
+    await fireEvent.click(screen.getByRole("button", { name: /api key/i }));
+
+    expect(screen.getByLabelText("AnkiConnect API key")).toBeVisible();
+  });
+
+  it("shows it unasked when AnkiConnect refuses for want of a key", async () => {
+    const anki = createFakeAnkiClient({});
+    anki.failWith({
+      kind: "api-key-required",
+      message: "valid api key must be provided",
+    });
+    render(SettingsForm, { settings: createFakeSettingsStore(), anki });
+
+    expect(await screen.findByLabelText("AnkiConnect API key")).toBeVisible();
+  });
+
+  it("shows it unasked when one is already stored", async () => {
+    renderForm(createFakeSettingsStore({ apiKey: "s3cret" }));
+
+    expect(await screen.findByLabelText("AnkiConnect API key")).toBeVisible();
   });
 
   // 8.5a: the key is stored like any other setting, and shown like a password.

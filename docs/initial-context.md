@@ -17,7 +17,11 @@ all of it, at M7 with the two joined: the real adapter under the real editor,
 and the draft made durable from the moment it exists — and at M8 with
 settings: a versioned, validated store behind the last port, an options page
 over it, and the constants M7 captured with replaced by what the user chose.
-Where a layer named below does not exist yet, this file says so.
+M10 rebuilt the editor to Anki's own shape, M13 put the skin on it, and M9 —
+which landed after both — added the connection report the panel opens on a
+failure, the manual allowlist fallback behind it, and the API key field that
+appears only when something asks for one. Where a layer named below does not
+exist yet, this file says so.
 
 ## What the extension is
 
@@ -558,6 +562,19 @@ The page is reached from a **Settings** button in the sidebar, through
 the panel Firefox embeds in `about:addons` — that panel is a few hundred pixels
 tall and this form is four groups of controls.
 
+**The API key field appears for a reason** (M9). It is unset for almost
+everyone (4.8), and a credential box on a form that does not need one is a box
+people fill in wrongly. `apiKeyWanted` is true when a key is already stored,
+when a load found AnkiConnect refusing for want of one, or when the user
+pressed **My AnkiConnect needs an API key**; otherwise the button stands in its
+place. A reset clears the key and takes the field with it.
+
+**The keyboard shortcuts are documented here**, in `ShortcutList.svelte`, from
+`SHORTCUT_DOCS`. They were documented in `title` attributes on the toolbar,
+which reaches whoever hovers a button and nobody else. A test holds the list to
+the editor's own bindings and to the manifest's suggested key, so it cannot go
+on describing a chord that changed somewhere else.
+
 ## Ports
 
 The domain layer talks to interfaces, never to AnkiConnect or `browser.*`
@@ -603,6 +620,7 @@ the causes it reports.
 | `errors.ts` | AnkiConnect's error strings, turned into typed causes. |
 | `mapping.ts` | `CardDraft` → note params, and note-type descriptors. |
 | `client.ts` | The port implementation and the probe. |
+| `allowlist.ts` | The manual `webCorsOriginList` snippet, for M9's fallback. Pure string work; no `fetch`. |
 | `dev-harness.ts` | A development-only harness for the manual checks, absent from every build. |
 
 **Nothing here imports `browser.*` or Svelte,** and ESLint enforces it for the
@@ -616,9 +634,9 @@ against a stubbed `fetch`, and no test needs a running Anki.
 The probe answers with a **cause**, never a boolean (4.3), because each has a
 different fix: Anki not running, the add-on not installed, the origin rejected,
 the host permission not granted, an API key required, a timeout, a malformed
-reply, or an API-level error. `AnkiError` carries the
-add-on's own words, plus `origin` on `origin-rejected` — so M9 can show the
-user the value to paste — and `needsManualFix` on a cause no retry will clear.
+reply, or an API-level error. `AnkiError` carries the add-on's own words
+alongside the kind, so a kind guessed wrong is still recoverable by a user who
+can read what Anki actually said.
 
 The plan expected a fourth cause, `origin-rejected`, and expected it to be
 indistinguishable from a dead port — both surfacing as a failed `fetch`, to be
@@ -633,7 +651,7 @@ request goes out. There is no third path, so no call site could reach it.
 With that gone every remaining cause is determinate, which is why the probe
 reports no confidence flag: one that is always `true` says nothing.
 
-### Onboarding is the host permission, and nothing else
+### Onboarding is the host permission first
 
 The plan pinned onboarding on the add-on's `requestPermission` handshake (P9),
 which prompts inside Anki and appends the extension's origin to
@@ -645,24 +663,70 @@ reply shape if a different AnkiConnect version ever needs it.
 What is left is the loopback host permission, which Firefox MV3 does not grant
 at install — the user grants it at runtime, from a user gesture (2.7). Until
 they do, every operation answers `permission-missing` before touching the
-network. That is the whole of onboarding.
+network, so it is the first thing a fresh install is missing and the first
+thing asked for (9.6). Everything after it is the connection report below.
 
-The gesture is a button, and it lives in the editor rather than the panel,
-because `permissions.request` is refused outside a user input handler and only
-the click that renders under the refusal is one. `permission-missing` is the
-single cause that renders **Allow access to Anki** instead of **Try again**
-(9.7): every other cause is fixed by trying again, and this one never is. The
-entrypoint records the endpoint each `hasHostPermission` check was made
-against, so the handler can call `permissions.request` synchronously rather
-than spending the gesture on a settings read. Declined is an answer, not an
-error — the message and the button both stand.
+The gesture is a button, in the editor and in the connection report, because
+`permissions.request` is refused outside a user input handler and only a click
+that renders under the refusal is one. `permission-missing` is the single cause
+that renders **Allow access to Anki** instead of **Try again** or **Check
+again** (9.7): every other cause is fixed by trying again, and this one never
+is — the probe refuses before anything leaves the browser. The entrypoint
+records the endpoint each `hasHostPermission` check was made against, so the
+handler can call `permissions.request` synchronously rather than spending the
+gesture on a settings read. Declined is an answer, not an error — the message
+and the button both stand.
 
 `"*"` in `webCorsOriginList` is never suggested. Web pages are the one class
 CORS does constrain, so widening the list is precisely how a site the user
 visits would get to drive their collection. Nothing about the allowlist gates a
 client that is not subject to CORS — curl, a native app, or an extension
 holding the host permission — so the extension must not describe it as
-protection against itself.
+protection against itself. `src/anki/allowlist.ts` is the only place that
+builds an allowlist value, and a test holds it to that rule.
+
+### The connection report
+
+M9's onboarding and its diagnostics are **one view**, `Diagnostics.svelte` in
+the sidebar, because they say the same things: a fresh install and an Anki
+closed an hour ago both need the cause and the fix, and only the framing
+differs. It is a `<details>` at the top of the panel — folded away when Anki
+answers, open when it does not, and reachable either way (9.4). A wizard would
+have been no use the second time, and the second time is the common case: the
+failure recurs whenever Anki closes.
+
+- **A check that has not been made is not a check that failed** (9.1).
+  `ConnectionState` is `unchecked | checking | connected | failed`, and the
+  summary line says which.
+- **The report carries the endpoint in use, this installation's own origin, and
+  whether a key is set** — never the key (4.8). That is `AnkiDiagnostics`,
+  declared with the ports because the view renders it and holds no adapter
+  import; `createSettingsAnkiDiagnostics` fills it in from the same settings
+  the client is built from, per call, so the two cannot describe different
+  endpoints.
+- **`everConnected` tells a first run from a fault.** Someone who has never
+  connected gets the sentence explaining what the extension needs; someone
+  whose Anki has just closed does not get it again (test 8).
+- **`permission-missing` gets the ask and no retry** (9.7), the same rule the
+  editor follows. A re-check would refuse before anything left the browser.
+- **`api-key-required` routes to the settings page**, which is where the key
+  field now appears.
+
+### The manual fallback
+
+`ManualFallback.svelte` renders, under a failure, the exact JSON to paste into
+AnkiConnect's `webCorsOriginList` with this installation's own origin already
+in it, copyable (9.2a). It exists because on Firefox no value could be
+documented in advance — the `moz-extension://` UUID is minted per installation
+(P8) — so the running extension is the only thing that knows what to paste. It
+keeps the add-on's own `http://localhost` entry, so a paste adds rather than
+removes, and it is a fragment rather than a whole config object because the
+user has other keys in there, `apiKey` among them.
+
+It is a fallback and not the primary path: with the host permission granted the
+browser exempts the extension from CORS, and M4 found the add-on serving a
+non-allowlisted origin — so for almost everyone this edit is unnecessary. It is
+here for the Anki, AnkiConnect version, or browser where it is not.
 
 ### What the adapter does and does not decide
 
@@ -713,8 +777,11 @@ in-memory fake rather than a running Anki.
 
 | Module | Holds |
 |--------|-------|
-| `Panel.svelte` | The shell: connection status, and the editor once there is a client to build it against. |
+| `Panel.svelte` | The shell: connection status, the connection report, and the editor once there is a client to build it against. |
 | `editor-model.svelte.ts` | The view-model — the draft, the asynchronous state, and every intent. |
+| `Diagnostics.svelte` | The connection report, which is also the first run (M9). |
+| `diagnostics-model.svelte.ts` | Its view-model: the probe, the state, and the permission ask. |
+| `ManualFallback.svelte` | The `webCorsOriginList` edit, with this installation's origin filled in (9.2a). |
 | `CardEditor.svelte` | The form: landing area, pickers, toolbar, fields, tags, source, warnings, actions. |
 | `LandingArea.svelte` | The captured text, and the control that sends runs of it into a field (10a). |
 | `Picker.svelte` | A name chosen out of a list, with a filter over it (M10). |
@@ -723,7 +790,7 @@ in-memory fake rather than a running Anki.
 | `ClozeControls.svelte` | The deletion list, and the two things done to it. |
 | `TagEditor.svelte` | Tags in, intents out, with completion from the collection. |
 | `selection.dom.ts` | A `contenteditable`'s selection as text offsets, and back (M10). |
-| `shortcuts.ts` | Which keystroke means which command (M10). |
+| `shortcuts.ts` | Which keystroke means which command (M10), and the list the options page documents (M9). |
 | `types.ts` | `FieldApi` — what a field lets the toolbar do to it. |
 | `error-copy.ts` | Every sentence the editor says about a failure. |
 | `connect.ts` | The two reads the panel makes over the message channel (M5). |
@@ -909,8 +976,10 @@ A manifest-declared content script needs match patterns, and those become
 install-time host permissions the ceiling does not allow. M5 injects it by
 file path on the gesture, and a test pins that path against the built output.
 
-`commands` — the keyboard shortcut, `Alt+Shift+A` — is a manifest key rather
-than a permission, so it widens nothing. So is `options_ui`, M8's settings
+`commands` — the keyboard shortcut, `CAPTURE_SHORTCUT`, `Alt+Shift+A` — is a
+manifest key rather than a permission, so it widens nothing. It is a constant
+because the options page documents it (M9), and a list saying something the
+manifest did not would be worse than no list. So is `options_ui`, M8's settings
 page: `runtime.openOptionsPage()` needs no permission, and
 `tests/manifest/generated-manifest.test.ts` pins both the page and the fact
 that adding it left the permission set alone.

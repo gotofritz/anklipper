@@ -50,6 +50,14 @@ const SELECTION: PageCapture = {
   warnings: [],
 };
 
+/** A second selection on the same page, for M9's repeat-capture flow. */
+const SAME_PAGE_SELECTION: PageCapture = {
+  ...SELECTION,
+  text: "Lyon is the third largest city in France.",
+  html: "Lyon is the third largest city in France.",
+  context: "Lyon is the third largest city in France.",
+};
+
 const SECOND_SELECTION: PageCapture = {
   ...SELECTION,
   text: "Berlin is the capital of Germany.",
@@ -786,5 +794,66 @@ describe("10. the landing area survives the note type", () => {
     await findField("Front");
 
     expect(landing()).toHaveValue("Paris is in France.");
+  });
+});
+
+/**
+ * M9's tests 5 and 6. The point is the sidebar staying where it is: Firefox
+ * keeps it per window (P2), so a user making a set of cards from one article
+ * never closes it, and anything that needed reopening would be felt on every
+ * card after the first.
+ */
+describe("11. the panel after a card has landed", () => {
+  it("returns to ready, with the deck the card went into retained", async () => {
+    const app = extension();
+    await app.capture();
+    app.openSidebar();
+    await screen.findByRole("option", { name: "Geography" });
+    await fireEvent.change(screen.getByLabelText("Deck"), {
+      target: { value: "Geography" },
+    });
+
+    await addCard();
+
+    await vi.waitFor(() =>
+      expect(screen.getByText(/added to anki/i)).toBeInTheDocument(),
+    );
+    // Ready for the next one: nothing half-added is left in the way.
+    expect(screen.queryByRole("textbox", { name: "Front" })).toBeNull();
+    const remembered = await app.remembered.load();
+    expect(remembered.ok && remembered.value.lastDeck).toBe("Geography");
+  });
+});
+
+describe("12. several cards from one page", () => {
+  it("takes the next selection into the sidebar that is already open", async () => {
+    const app = extension();
+    await app.capture();
+    app.openSidebar();
+    await screen.findByRole("option", { name: "Geography" });
+    await fireEvent.change(screen.getByLabelText("Deck"), {
+      target: { value: "Geography" },
+    });
+    await type("Back", "Paris");
+    await addCard();
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(1));
+
+    // No unmount, no re-navigation: the same panel, a second gesture.
+    await app.capture(SAME_PAGE_SELECTION);
+
+    expect(await findField("Front")).toHaveTextContent(
+      "Lyon is the third largest city in France.",
+    );
+    // 8.5 carried into the second card: the deck the first one went into.
+    expect(screen.getByLabelText("Deck")).toHaveValue("Geography");
+
+    await type("Back", "Lyon");
+    await addCard();
+
+    await vi.waitFor(() => expect(app.anki.added).toHaveLength(2));
+    expect(app.anki.added.map((card) => card.source.url)).toEqual([
+      SELECTION.url,
+      SELECTION.url,
+    ]);
   });
 });

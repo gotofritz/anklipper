@@ -3,6 +3,7 @@ import type { NoteType } from "@/core/note-type";
 import type {
   AnkiClient,
   AnkiConnection,
+  AnkiDiagnostics,
   AnkiError,
   NoteId,
 } from "@/core/ports/types";
@@ -57,18 +58,13 @@ export interface AnkiClientConfig {
 const DEFAULT_TIMEOUT_MS = 5_000;
 
 /**
- * What may be shown to the user, or written into a bug report.
+ * What may be shown to the user, or written into a bug report (4.8, 9.3).
  *
- * The API key is reported as a yes-or-no and never as a value: it is a
- * credential, and diagnostics are the one thing users paste into public
- * issues (4.8).
+ * The shape is the port's — M9's diagnostics view renders it, and the sidebar
+ * holds no adapter import — so it is declared in `core/ports/types.ts` and
+ * re-exported here, where the only thing that can fill it in lives.
  */
-export interface AnkiDiagnostics {
-  readonly endpoint: string;
-  readonly origin: string;
-  readonly apiKeyConfigured: boolean;
-  readonly timeoutMs: number;
-}
+export type { AnkiDiagnostics };
 
 export function describeAnkiConnection(
   config: AnkiClientConfig,

@@ -1,3 +1,5 @@
+import { CAPTURE_SHORTCUT } from "@/manifest/manifest";
+
 /**
  * The editor's keyboard, matched to Anki's (10.7).
  *
@@ -80,6 +82,45 @@ export const SHORTCUT_HINTS: Readonly<Partial<Record<EditorCommand, string>>> =
     source: "Ctrl+Shift+X",
     submit: "Ctrl+Enter",
   };
+
+export interface ShortcutDoc {
+  readonly keys: string;
+  readonly description: string;
+}
+
+/**
+ * The shortcuts, written down (M9).
+ *
+ * `SHORTCUT_HINTS` documents a chord to whoever hovers the button it is on,
+ * and to nobody else — so this is the list the options page renders. It opens
+ * with the capture shortcut, which belongs to the browser rather than to the
+ * editor: it is what the user presses before any of the rest apply, and the
+ * only one they can rebind (in the browser's own add-on shortcuts).
+ *
+ * `shortcuts.test.ts` holds it to `SHORTCUT_HINTS` and to the manifest, so a
+ * chord that changes in one place cannot go on being documented as the other.
+ */
+export const SHORTCUT_DOCS: readonly ShortcutDoc[] = [
+  {
+    keys: CAPTURE_SHORTCUT,
+    description: "Make a card from the text selected on the page",
+  },
+  { keys: "Ctrl+Enter", description: "Add the card to Anki" },
+  { keys: "Ctrl+B", description: "Bold" },
+  { keys: "Ctrl+I", description: "Italic" },
+  { keys: "Ctrl+U", description: "Underline" },
+  { keys: "Ctrl+=", description: "Subscript" },
+  { keys: "Ctrl+Shift+=", description: "Superscript" },
+  {
+    keys: "Ctrl+Shift+C",
+    description: "Hide the selection as a new cloze deletion",
+  },
+  {
+    keys: "Ctrl+Alt+Shift+C",
+    description: "Hide it as part of the deletion already being made",
+  },
+  { keys: "Ctrl+Shift+X", description: "Show the field as HTML, or stop" },
+];
 
 function matches(chord: KeyChord, binding: Binding): boolean {
   const key = chord.key.toLowerCase();

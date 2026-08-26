@@ -76,6 +76,13 @@ export const CHROME_EXTENSION_KEY =
  */
 export const CAPTURE_COMMAND = "create-anki-card";
 
+/**
+ * The chord the manifest suggests for it. A constant because the extension
+ * documents its own shortcuts (M9), and a list that said something the
+ * manifest did not would be worse than no list.
+ */
+export const CAPTURE_SHORTCUT = "Alt+Shift+A";
+
 export interface ManifestCommand {
   readonly suggested_key?: { readonly default: string };
   readonly description: string;
@@ -107,7 +114,7 @@ export function manifestExtras(target: string): ManifestExtras {
     optional_host_permissions: [...OPTIONAL_HOST_PERMISSIONS],
     commands: {
       [CAPTURE_COMMAND]: {
-        suggested_key: { default: "Alt+Shift+A" },
+        suggested_key: { default: CAPTURE_SHORTCUT },
         description: "Create an Anki card from the selected text",
       },
     },
