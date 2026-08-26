@@ -181,6 +181,8 @@ On disk:
   in CSS resolves at runtime. Holds the vendored fonts; see *Fonts* below.
 - `preview/` — the sidebar rendered outside the browser, for looking at.
   See *Looking at the sidebar*.
+- `docs/icon/` — the icon masters and their brief. Deliberately not
+  `public/`; see *Icons*.
 
 Tests sit beside the module they cover. ESLint enforces the bottom of the
 dependency stack: `src/core/`, `src/manifest/`, and `src/messaging/` may not
@@ -241,6 +243,31 @@ font: `Archivo-OFL.txt` and `IBMPlex-OFL.txt` sit next to them in
 `tests/assets/font-assets.test.ts` pins the three references in the stylesheet
 to real WOFF2 files. Without it a missing font is silent — there is no failing
 request to notice, just `font-display: swap` settling on Helvetica.
+
+## Icons
+
+`public/icon/16.png`, `24`, `32`, `48`, `128`. Nothing declares them: WXT
+discovers `public/icon/<size>.png` and writes the manifest's `icons` block
+itself, on both targets. A declaration would be one more place to keep in
+step, and — unlike discovery — one that can name a file that is not there.
+
+`tests/manifest/generated-manifest.test.ts` pins the emitted set and asserts
+every file reaches the build output. That is what pays for discovery: a
+stray PNG dropped into `public/icon/` would otherwise become an icon in
+silence.
+
+**The five are five drawings, not one drawing scaled five ways.** The kana
+disappears below about 40px and the stacked AK closes up below about 28px,
+so the mark is redrawn at each threshold — 128 and 48 carry the full cut, 32
+a simplified AK with a fatter spine, 24 and 16 a single A. Resampling 128
+down to 16 does not produce the 16, and replacing one size with a resample
+is how the small end stops reading.
+
+The 256px masters, the brief that explains which cut goes where, and a 4×
+preview of the 16 live in `docs/icon/`. They stay out of `public/` because
+`public/` ships: everything in it lands in the bundle a user installs, and
+`docs/` is excluded from the AMO sources zip as well. Re-cut from the
+masters rather than from a shipped size.
 
 ## Looking at the sidebar
 

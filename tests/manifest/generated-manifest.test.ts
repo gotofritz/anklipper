@@ -20,6 +20,7 @@ type Manifest = {
   sidebar_action?: unknown;
   side_panel?: unknown;
   commands?: Record<string, unknown>;
+  icons?: Record<string, string>;
   content_scripts?: unknown;
   options_ui?: { page?: string; open_in_tab?: boolean };
 };
@@ -96,6 +97,31 @@ describe("generated manifest", () => {
       ).toBe(true);
     },
   );
+
+  // WXT discovers these from `public/icon/`, so nothing declares them and
+  // nothing could point them at a file that is not there. What that costs is
+  // a stray PNG dropped in that directory silently becoming an icon — which
+  // is what this pins. The set is five *drawings*, not one scaled five ways
+  // (see `docs/icon/README.md`), so a missing size is a mark that stops
+  // reading, not merely a blurry one.
+  const SIZES = ["16", "24", "32", "48", "128"];
+
+  it.each(["firefox", "chrome"])(
+    "gives %s exactly the five icons",
+    (browser) => {
+      expect(built[browser]?.icons).toEqual(
+        Object.fromEntries(SIZES.map((size) => [size, `icon/${size}.png`])),
+      );
+    },
+  );
+
+  it.each(["firefox", "chrome"])("emits every %s icon file", (browser) => {
+    for (const size of SIZES) {
+      expect(
+        existsSync(resolve(`.output/${browser}-mv3/icon/${size}.png`)),
+      ).toBe(true);
+    }
+  });
 
   // A declared content script needs match patterns, and those become
   // install-time host permissions the ceiling does not allow.
