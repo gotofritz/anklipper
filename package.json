@@ -16,6 +16,8 @@
     "build": "wxt build -b firefox && wxt zip -b firefox",
     "sign": "pnpm run build && web-ext sign --source-dir .output/firefox-mv3 --artifacts-dir .output --channel unlisted --upload-source-code .output/anklipper-*-sources.zip",
     "build:chrome": "wxt build -b chrome",
+    "preview": "vite --config preview/vite.config.ts",
+    "preview:build": "vite build --config preview/vite.config.ts",
     "check": "svelte-check --tsconfig ./tsconfig.json && tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",

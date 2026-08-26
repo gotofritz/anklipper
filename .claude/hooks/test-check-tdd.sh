@@ -82,6 +82,7 @@ run allow "suffixed types"    src/card/draft.types.ts
 run allow "barrel"            src/card/index.ts
 run allow "WXT entrypoint"    entrypoints/background.ts
 run allow "nested entrypoint" src/entrypoints/sidepanel/main.ts
+run allow "preview harness"   preview/main.ts
 
 # --- not gated at all -------------------------------------------------------
 run allow "markdown"          docs/plans/00-plan.md

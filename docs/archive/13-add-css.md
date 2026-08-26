@@ -32,8 +32,10 @@ Landed on `feat/design`, not `feat/tdr-skin`. What differed from the plan:
   two the plan flagged.
 - **§5 design reference** — `Anklipper Sidebar.dc.html` is not in the
   repository, so the comparison was made against a render of the real panel
-  instead: the built `Panel` mounted on the port fakes, driven in Chromium.
-  That render is `docs/images/sidebar.png`, and it is what the README shows.
+  instead: the real `Panel` mounted on the port fakes. That grew into
+  `preview/`, which is now how the sidebar is looked at without a browser —
+  seven scenes, one per state the CSS renders differently. The `card` scene
+  is what `docs/images/sidebar.png` and the README show.
 
 Two things landed on the same branch that the plan did not ask for, because
 the render made them visible: the sidebar had no way to grant the Anki host

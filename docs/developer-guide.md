@@ -179,6 +179,8 @@ On disk:
   panel, add — with only AnkiConnect mocked.
 - `public/` — copied verbatim to the bundle root, so an absolute `/fonts/…`
   in CSS resolves at runtime. Holds the vendored fonts; see *Fonts* below.
+- `preview/` — the sidebar rendered outside the browser, for looking at.
+  See *Looking at the sidebar*.
 
 Tests sit beside the module they cover. ESLint enforces the bottom of the
 dependency stack: `src/core/`, `src/manifest/`, and `src/messaging/` may not
@@ -239,6 +241,47 @@ font: `Archivo-OFL.txt` and `IBMPlex-OFL.txt` sit next to them in
 `tests/assets/font-assets.test.ts` pins the three references in the stylesheet
 to real WOFF2 files. Without it a missing font is silent — there is no failing
 request to notice, just `font-display: swap` settling on Helvetica.
+
+## Looking at the sidebar
+
+```bash
+pnpm run preview
+```
+
+That serves the real `Panel` — the same component the extension mounts —
+against the in-memory port fakes, with the skin and the vendored fonts
+loaded. Nothing is stubbed and no extension host is faked, because the
+sidebar does not need one: P3 keeps every `browser.*` call behind a port, so
+what is left compiles and mounts like any other Svelte component. If that
+ever stops being true, this page is the first thing that breaks, which is a
+second reason to keep it.
+
+Scenes are URLs, and the links across the top switch between them:
+
+| Scene | What it is for |
+| --- | --- |
+| `?scene=card` | The ordinary case: a captured card, mid-edit |
+| `?scene=empty` | First run — the sidebar open before anything is captured |
+| `?scene=cloze` | Cloze markup, its ordinal controls, and **Mark selection** |
+| `?scene=long` | A note type with four fields, in the collection's order |
+| `?scene=waiting` | A second selection waiting behind an open card (7.4) |
+| `?scene=permission` | The host permission never granted — **Allow access to Anki** |
+| `?scene=offline` | The background not answering: `RT/NO`, and a retry |
+
+Add one in `preview/scenes.ts` when a CSS change turns on a state none of
+these reach. Keep them to states that *render* differently — a scene that
+differs only in wording proves nothing a component test does not already
+hold, and `preview/` is exempt from the TDD gate precisely because it is a
+viewer, not behaviour. Anything with logic in it belongs in `src/` with a
+test.
+
+`pnpm run preview:build` writes the same page to `.output/preview/` if you
+want to serve it somewhere. The README's screenshot is the `card` scene with
+the scene picker removed.
+
+Two things it cannot show you, because they are the browser's: the sidebar's
+real width in Firefox's own chrome, and anything that depends on a live
+AnkiConnect. *Checking it in Firefox* is still what signs work off.
 
 ## Commit and CI gates
 
