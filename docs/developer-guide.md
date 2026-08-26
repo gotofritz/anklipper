@@ -357,6 +357,58 @@ Plan: https://github.com/gotofritz/anklipper/blob/main/docs/archive/03-card-draf
 
 `AGENTS.md` has the full rules under *Releases*.
 
+### What the user reads, and where it is written
+
+Four different texts, and only two of them live in this repository.
+
+| Text | Written where | Seen where |
+| --- | --- | --- |
+| The one-line description | `package.json`'s `description` | `about:addons`, `chrome://extensions` |
+| The name | `wxt.config.ts` | the same places |
+| Version notes | Conventional Commit pull request titles | `CHANGELOG.md`, the GitHub Release |
+| AMO listing and its per-version release notes | nowhere — see below | nowhere |
+
+The description is deliberately **not** in `wxt.config.ts`: WXT falls back to
+`package.json` when the manifest sets none, so the sentence is written once.
+It used to be written twice, the same string in both, with the config
+silently winning — so a change to `package.json` would not have reached a
+single user. `tests/manifest/generated-manifest.test.ts` holds the link now:
+re-add an override that drifts and it fails. The **name** is overridden on
+purpose, because `package.json`'s is the npm one and lower-case.
+
+Version notes are release-please's, from pull request titles — which is the
+whole reason a malformed title is worse than an ugly one. The README sends
+users to the releases page for the `.xpi`, so the GitHub Release is where a
+user actually reads what changed.
+
+### Nothing reaches Mozilla, and nothing is meant to
+
+Signing on the **unlisted** channel means self-distribution: there is no AMO
+listing page. No summary, no long description, no screenshots, no
+per-version release notes — none of it is displayed anywhere, because there
+is no page to display it on. AMO takes the zip, signs it, and hands back an
+`.xpi`. Do not go looking for where to write the listing copy; there is no
+listing.
+
+Going **listed** changes that, and is a decision rather than a flag:
+
+- Listing metadata — name, summary, description, categories, licence,
+  screenshots — is entered once on AMO's developer hub and lives there, not
+  here.
+- Release notes become required per upload. `web-ext sign --amo-metadata
+  <file.json>` is the hook; web-ext spreads that JSON into the AMO API body
+  with the upload merged into `version`:
+
+  ```json
+  { "version": { "release_notes": { "en-US": "…" } } }
+  ```
+
+  That is the seam where `CHANGELOG.md` would feed AMO, generated rather
+  than retyped. Pointless while unlisted.
+- Every version waits for **human review**, which takes days and can reject.
+  Unlisted signing is automated and near-instant. That trade, not the copy,
+  is the reason 1.0.0 goes out unlisted.
+
 ### What a release contains
 
 `pnpm build` produces two archives in `.output/`:

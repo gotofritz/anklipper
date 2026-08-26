@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { build } from "wxt";
@@ -21,11 +21,18 @@ type Manifest = {
   side_panel?: unknown;
   commands?: Record<string, unknown>;
   icons?: Record<string, string>;
+  name?: string;
+  description?: string;
   content_scripts?: unknown;
   options_ui?: { page?: string; open_in_tab?: boolean };
 };
 
 const built: Record<string, Manifest> = {};
+
+/** The one place the description is written. Read, never retyped. */
+const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf8")) as {
+  description: string;
+};
 
 beforeAll(async () => {
   for (const browser of ["firefox", "chrome"]) {
@@ -97,6 +104,24 @@ describe("generated manifest", () => {
       ).toBe(true);
     },
   );
+
+  // WXT falls back to `package.json`'s description when the manifest sets
+  // none, so the sentence is written once. It was written twice — the same
+  // string in `wxt.config.ts` and in `package.json`, with nothing holding
+  // them together and the config silently winning. This is what stops that
+  // coming back: re-add an override that drifts and this fails.
+  it.each(["firefox", "chrome"])(
+    "describes %s with package.json's description and no other",
+    (browser) => {
+      expect(built[browser]?.description).toBe(pkg.description);
+    },
+  );
+
+  // The name is overridden on purpose: `package.json`'s is the npm one,
+  // lower-case, and what a user reads in about:addons is not.
+  it.each(["firefox", "chrome"])("names the extension in %s", (browser) => {
+    expect(built[browser]?.name).toBe("Anklipper");
+  });
 
   // WXT discovers these from `public/icon/`, so nothing declares them and
   // nothing could point them at a file that is not there. What that costs is
