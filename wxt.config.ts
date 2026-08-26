@@ -17,9 +17,12 @@ export default defineConfig({
   // both targets build the same manifest generation.
   manifestVersion: 3,
   manifest: ({ browser }) => ({
+    // `name` is overridden because `package.json`'s is the npm one and
+    // lower-case. The description is not: WXT reads it from `package.json`,
+    // so the sentence a user sees in about:addons is written once. It used
+    // to be written here too, identically, with nothing keeping the two in
+    // step — `tests/manifest/generated-manifest.test.ts` now holds the link.
     name: "Anklipper",
-    description:
-      "Turn text selected on a web page into an Anki card, via AnkiConnect.",
     // The permission ceiling and the pinned extension identity live in
     // `src/manifest/manifest.ts`, where a test pins them (2.4, 2.5). WXT adds
     // the sidebar surface itself, from the sidepanel entrypoint:

@@ -181,6 +181,8 @@ On disk:
   in CSS resolves at runtime. Holds the vendored fonts; see *Fonts* below.
 - `preview/` — the sidebar rendered outside the browser, for looking at.
   See *Looking at the sidebar*.
+- `docs/icon/` — the icon masters and their brief. Deliberately not
+  `public/`; see *Icons*.
 
 Tests sit beside the module they cover. ESLint enforces the bottom of the
 dependency stack: `src/core/`, `src/manifest/`, and `src/messaging/` may not
@@ -241,6 +243,31 @@ font: `Archivo-OFL.txt` and `IBMPlex-OFL.txt` sit next to them in
 `tests/assets/font-assets.test.ts` pins the three references in the stylesheet
 to real WOFF2 files. Without it a missing font is silent — there is no failing
 request to notice, just `font-display: swap` settling on Helvetica.
+
+## Icons
+
+`public/icon/16.png`, `24`, `32`, `48`, `128`. Nothing declares them: WXT
+discovers `public/icon/<size>.png` and writes the manifest's `icons` block
+itself, on both targets. A declaration would be one more place to keep in
+step, and — unlike discovery — one that can name a file that is not there.
+
+`tests/manifest/generated-manifest.test.ts` pins the emitted set and asserts
+every file reaches the build output. That is what pays for discovery: a
+stray PNG dropped into `public/icon/` would otherwise become an icon in
+silence.
+
+**The five are five drawings, not one drawing scaled five ways.** The kana
+disappears below about 40px and the stacked AK closes up below about 28px,
+so the mark is redrawn at each threshold — 128 and 48 carry the full cut, 32
+a simplified AK with a fatter spine, 24 and 16 a single A. Resampling 128
+down to 16 does not produce the 16, and replacing one size with a resample
+is how the small end stops reading.
+
+The 256px masters, the brief that explains which cut goes where, and a 4×
+preview of the 16 live in `docs/icon/`. They stay out of `public/` because
+`public/` ships: everything in it lands in the bundle a user installs, and
+`docs/` is excluded from the AMO sources zip as well. Re-cut from the
+masters rather than from a shipped size.
 
 ## Looking at the sidebar
 
@@ -329,6 +356,58 @@ Plan: https://github.com/gotofritz/anklipper/blob/main/docs/archive/03-card-draf
 ```
 
 `AGENTS.md` has the full rules under *Releases*.
+
+### What the user reads, and where it is written
+
+Four different texts, and only two of them live in this repository.
+
+| Text | Written where | Seen where |
+| --- | --- | --- |
+| The one-line description | `package.json`'s `description` | `about:addons`, `chrome://extensions` |
+| The name | `wxt.config.ts` | the same places |
+| Version notes | Conventional Commit pull request titles | `CHANGELOG.md`, the GitHub Release |
+| AMO listing and its per-version release notes | nowhere — see below | nowhere |
+
+The description is deliberately **not** in `wxt.config.ts`: WXT falls back to
+`package.json` when the manifest sets none, so the sentence is written once.
+It used to be written twice, the same string in both, with the config
+silently winning — so a change to `package.json` would not have reached a
+single user. `tests/manifest/generated-manifest.test.ts` holds the link now:
+re-add an override that drifts and it fails. The **name** is overridden on
+purpose, because `package.json`'s is the npm one and lower-case.
+
+Version notes are release-please's, from pull request titles — which is the
+whole reason a malformed title is worse than an ugly one. The README sends
+users to the releases page for the `.xpi`, so the GitHub Release is where a
+user actually reads what changed.
+
+### Nothing reaches Mozilla, and nothing is meant to
+
+Signing on the **unlisted** channel means self-distribution: there is no AMO
+listing page. No summary, no long description, no screenshots, no
+per-version release notes — none of it is displayed anywhere, because there
+is no page to display it on. AMO takes the zip, signs it, and hands back an
+`.xpi`. Do not go looking for where to write the listing copy; there is no
+listing.
+
+Going **listed** changes that, and is a decision rather than a flag:
+
+- Listing metadata — name, summary, description, categories, licence,
+  screenshots — is entered once on AMO's developer hub and lives there, not
+  here.
+- Release notes become required per upload. `web-ext sign --amo-metadata
+  <file.json>` is the hook; web-ext spreads that JSON into the AMO API body
+  with the upload merged into `version`:
+
+  ```json
+  { "version": { "release_notes": { "en-US": "…" } } }
+  ```
+
+  That is the seam where `CHANGELOG.md` would feed AMO, generated rather
+  than retyped. Pointless while unlisted.
+- Every version waits for **human review**, which takes days and can reject.
+  Unlisted signing is automated and near-instant. That trade, not the copy,
+  is the reason 1.0.0 goes out unlisted.
 
 ### What a release contains
 
