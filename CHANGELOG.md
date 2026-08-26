@@ -9,6 +9,14 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [1.0.0](https://github.com/gotofritz/anklipper/compare/v0.9.0...v1.0.0) (2026-08-26)
+
+
+### Features
+
+* **icon:** ship the extension's icons, and write its description once ([#26](https://github.com/gotofritz/anklipper/issues/26)) ([c1744de](https://github.com/gotofritz/anklipper/commit/c1744de977a977e7409fe6841faba64fdcc6a45f))
+* **m13:** the tDR skin, its fonts, and a 1.0.0 that can be installed ([#25](https://github.com/gotofritz/anklipper/issues/25)) ([9c0a8ff](https://github.com/gotofritz/anklipper/commit/9c0a8ffbe5713ccaf8d078e060a356d9f77ffccb))
+
 ## [0.9.0](https://github.com/gotofritz/anklipper/compare/v0.8.0...v0.9.0) (2026-08-25)
 
 
