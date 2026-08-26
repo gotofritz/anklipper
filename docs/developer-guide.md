@@ -500,13 +500,20 @@ Signing depends on the extension identity staying fixed. `GECKO_ID` in
 `src/manifest/manifest.ts` is what AMO keys the add-on to; changing it
 creates a different add-on, and every existing install stops updating.
 
-### Cutting the first stable release
+### Forcing a version
 
-`release-please-config.json` currently carries `"release-as": "1.0.0"`.
-That is a one-release instruction, not a setting: **delete it once 1.0.0 has
-been tagged**, or every subsequent release PR will propose 1.0.0 again.
-`"bump-minor-pre-major": false` beside it is permanent — past 1.0.0 a
-breaking change should bump the major, which is what it turns back on.
+Versions are derived from the commits, and that is the point — but a version
+can be *stated* when the derivation would give the wrong answer.
+`"release-as": "<version>"` in `release-please-config.json` does it, and
+1.0.0 was cut that way: from 0.9.0 the commits alone would have derived
+0.10.0, and the release was a deliberate declaration that the extension was
+finished enough to install.
+
+**It is a one-release instruction, not a setting.** Left in place it pins
+every subsequent release PR to the same version, so it comes out in the
+change that follows the release it forced — which is what happened here.
+`"bump-minor-pre-major": false` beside it stays: past 1.0.0 a breaking
+change should bump the major, and that is what turns it back on.
 
 ### The order of a release
 
