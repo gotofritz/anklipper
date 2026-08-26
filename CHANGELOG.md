@@ -9,6 +9,13 @@ entry here leads to the document describing what it was meant to do, and an
 **As built** section at the top of that document records where it landed
 differently.
 
+## [0.9.0](https://github.com/gotofritz/anklipper/compare/v0.8.0...v0.9.0) (2026-08-25)
+
+
+### Features
+
+* **m10:** card editor parity — rich fields, formatting, sticky pins, and a landing area ([#23](https://github.com/gotofritz/anklipper/issues/23)) ([de10c83](https://github.com/gotofritz/anklipper/commit/de10c83f3654c318157f3a7ebea9f632eea85720))
+
 ## [0.8.0](https://github.com/gotofritz/anklipper/compare/v0.7.0...v0.8.0) (2026-08-25)
 
 
