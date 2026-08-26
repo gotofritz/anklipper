@@ -369,10 +369,53 @@ export WEB_EXT_API_KEY=user:12345678:123
 export WEB_EXT_API_SECRET=…
 ```
 
-Put the same two values in the repository's Actions secrets as
-`AMO_API_KEY` and `AMO_API_SECRET`, and every release signs itself. Without
-them the signing step is skipped rather than failed — the zips still attach,
-and the release simply has no `.xpi`.
+Without those two, `pnpm run sign` is the only way to sign, and it is a
+manual step someone has to remember.
+
+#### Giving CI the same credentials
+
+**Settings → Secrets and variables → Actions → Secrets → Repository
+secrets → New repository secret**, twice:
+
+| Name | Value |
+| --- | --- |
+| `AMO_API_KEY` | the JWT issuer, `user:12345678:123` |
+| `AMO_API_SECRET` | the secret beside it |
+
+Then every release signs itself. Without them the signing step is skipped
+rather than failed — the zips still attach, and the release simply has no
+`.xpi`.
+
+Two ways to get this wrong, both silent:
+
+- **Not environment secrets.** GitHub lists *Environment secrets* first on
+  that page, and its only button leads to creating an environment, so it
+  reads like the only route. It is not: *Repository secrets* is further
+  down with its own button. An environment secret resolves only for a job
+  that declares `environment:`, and `release.yml` declares none — so putting
+  them there leaves `secrets.AMO_API_KEY` empty, the step skips its
+  `if: env.WEB_EXT_API_KEY != ''`, and the release quietly has no `.xpi`.
+- **Not variables.** Repository *variables* are plaintext and appear in
+  logs. The API secret is a secret.
+
+Check it worked on the next release run: *Sign for distribution* should run
+rather than skip, and the release page should carry an `.xpi` beside the two
+zips. If it skipped, the names are misspelled — they are matched exactly.
+
+#### If a release should wait for a human
+
+An environment is what gates a job on approval, and signing is a fair thing
+to gate. Create one — call it `release` — under **Settings → Environments**,
+add yourself under *Required reviewers*, move the two secrets to it, and add
+one line to the `artifact` job in `.github/workflows/release.yml`:
+
+```yaml
+    environment: release
+```
+
+Every release then pauses for approval before it signs. Do both halves or
+neither: moving the secrets to an environment without that line is exactly
+the silent skip above.
 
 Signing depends on the extension identity staying fixed. `GECKO_ID` in
 `src/manifest/manifest.ts` is what AMO keys the add-on to; changing it
@@ -394,7 +437,8 @@ breaking change should bump the major, which is what it turns back on.
 3. Merge that pull request. It tags, publishes the release, builds, signs if
    it can, and attaches the archives.
 4. Check the release page has an `.xpi`. If it does not, the credentials are
-   missing — sign locally with `pnpm run sign` and upload the result.
+   missing — see *Giving CI the same credentials* — so sign locally with
+   `pnpm run sign` and upload the result.
 5. Install that `.xpi` in a clean Firefox profile and add one real card
    before telling anyone. The README's install instructions are the steps to
    follow.
